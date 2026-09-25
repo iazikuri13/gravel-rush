@@ -12,7 +12,15 @@ const PUBLIC = join(ROOT, 'public');
 const PORT = Number(process.env.PORT) || 3000;
 
 const store = new Store(process.env.DATA_DIR || join(ROOT, 'data'));
-const game = new Game(store, { clientSeed: process.env.CLIENT_SEED });
+const env = process.env;
+const game = new Game(store, {
+  clientSeed: env.CLIENT_SEED,
+  secret: env.CHAIN_SECRET,
+  chainLength: env.CHAIN_LENGTH ? Number(env.CHAIN_LENGTH) : undefined,
+  betMs: env.BET_MS ? Number(env.BET_MS) : undefined,
+  endMs: env.END_MS ? Number(env.END_MS) : undefined,
+  speed: env.SPEED ? Number(env.SPEED) : undefined
+});
 
 // ---------- სტატიკური ფაილები ----------
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
@@ -95,7 +103,7 @@ wss.on('connection', ws => {
       send(ws, {
         t: 'welcome', token,
         commit: game.commit, chainLength: store.meta.chainLength, clientSeed: game.clientSeed,
-        rules: { betMs: RULES.betMs, endMs: RULES.endMs, G, minBet: RULES.minBet, maxBet: RULES.maxBet, maxCrash100: MAX_CRASH_100 }
+        rules: { betMs: game.betMs, endMs: game.endMs, speed: game.speed, G, minBet: RULES.minBet, maxBet: RULES.maxBet, maxCrash100: MAX_CRASH_100 }
       });
       send(ws, { t: 'history', items: game.history });
       send(ws, { t: 'me', now: Date.now(), ...game.myState(token) });
@@ -115,16 +123,17 @@ wss.on('connection', ws => {
         case 'ping': return send(ws, { t: 'pong', id: msg.id, now: Date.now() });
         default: return;
       }
-      toToken(token, { t: 'me', now: Date.now(), ...game.myState(token) });
+      // re = ბრძანების id (არასავალდებულო) — კლიენტს პასუხის ბრძანებასთან მიბმა შეუძლია
+      toToken(token, { t: 'me', re: msg.id, now: Date.now(), ...game.myState(token) });
     } catch (e) {
-      if (e instanceof GameError) send(ws, { t: 'err', msg: e.message });
-      else { console.error(e); send(ws, { t: 'err', msg: 'სერვერის შეცდომა' }); }
+      if (e instanceof GameError) send(ws, { t: 'err', re: msg.id, msg: e.message });
+      else { console.error(e); send(ws, { t: 'err', re: msg.id, msg: 'სერვერის შეცდომა' }); }
     }
   });
 });
 
 http.listen(PORT, () => {
-  console.log(`Gravel Rush → http://localhost:${PORT}`);
+  console.log(`Gravel Rush → http://localhost:${http.address().port}`);
   console.log(`commit (ჯაჭვის ბოლო ჰეში): ${game.commit}`);
   console.log(`client seed: ${game.clientSeed}  ·  შემდეგი რაუნდი: #${store.meta.nextRound}`);
   game.start();

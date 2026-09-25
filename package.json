@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node server/index.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js test/services/*.test.js",
+    "test:contract": "node --test test/contract.test.js"
   },
   "dependencies": {
     "ws": "^8.18.0"

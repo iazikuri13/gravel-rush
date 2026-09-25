@@ -19,12 +19,19 @@ export const RULES = {
 };
 
 export class Game extends EventEmitter {
-  constructor(store, { chainLength = 100000, clientSeed } = {}) {
+  /**
+   * @param opts.secret  ჯაჭვის secret — მხოლოდ ახალი ჯაჭვის შექმნისას (ტესტები / საიდუმლოების მენეჯერი)
+   * @param opts.speed   დროის აჩქარება (მხოლოდ ტესტებისთვის; პროდაქშენში 1)
+   */
+  constructor(store, { chainLength = 100000, clientSeed, secret, betMs = RULES.betMs, endMs = RULES.endMs, speed = 1 } = {}) {
     super();
     this.store = store;
+    this.betMs = betMs;
+    this.endMs = endMs;
+    this.speed = speed;
     if (!store.meta) {
       store.meta = {
-        secret: newSecret(),
+        secret: secret || newSecret(),
         chainLength,
         clientSeed: clientSeed || 'gravel-rush-demo-' + randomBytes(4).toString('hex'),
         nextRound: 1,
@@ -80,7 +87,7 @@ export class Game extends EventEmitter {
     this.phaseStart = Date.now();
     this.raceStart = 0;
     this.emit('snap');
-    this.timer = setTimeout(() => this.#startRace(), RULES.betMs);
+    this.timer = setTimeout(() => this.#startRace(), this.betMs);
   }
 
   #startRace() {
@@ -93,7 +100,7 @@ export class Game extends EventEmitter {
   }
 
   #tick() {
-    const t = (Date.now() - this.raceStart) / 1000;
+    const t = (Date.now() - this.raceStart) / 1000 * this.speed;
     // 1) ავტო-ქეშაუთები, რომლებიც მანქანის გაჩერებამდე ხვდება
     for (const b of this.bets.values()) {
       if (b.state !== 'open' || !b.auto) continue;
@@ -146,7 +153,7 @@ export class Game extends EventEmitter {
     this.store.savePlayersNow();
     this.emit('end');
     this.emit('snap');
-    this.timer = setTimeout(() => this.#newRound(), RULES.endMs);
+    this.timer = setTimeout(() => this.#newRound(), this.endMs);
   }
 
   // ---------- მოთამაშეები ----------
@@ -211,7 +218,7 @@ export class Game extends EventEmitter {
   cashOut(token) {
     const bet = this.bets.get(token);
     if (this.phase !== 'race' || !bet || bet.state !== 'open') throw new GameError('ქეშაუთი ახლა შეუძლებელია');
-    const t = (Date.now() - this.raceStart) / 1000;
+    const t = (Date.now() - this.raceStart) / 1000 * this.speed;
     const car = this.cars[bet.car];
     if (car.ended || t >= car.endT) throw new GameError('დააგვიანე — მანქანა უკვე გაჩერდა');
     // t < endT  ⇒  e^(G·t) < crash  ⇒  m100 < crash100

@@ -4,9 +4,9 @@ import { sha256, resultsFromSeed, verifyChain } from './shared/verify.js';
 
 const $ = s => document.querySelector(s);
 const CARS = [
-  { name: 'ფალკონი', num: '07', color: '#ef5a3c', dark: '#a3321c' },
-  { name: 'ტალღა',   num: '21', color: '#3d8bff', dark: '#1f55b3' },
-  { name: 'კრაზანა', num: '44', color: '#f4c430', dark: '#a8820c' }
+  { name: 'ფალკონი', num: '07', color: '#e8352b', dark: '#8c1a14', accent: '#ffffff' },
+  { name: 'ტალღა',   num: '21', color: '#1f6fff', dark: '#0d3a91', accent: '#9fe3ff' },
+  { name: 'კრაზანა', num: '44', color: '#f5c518', dark: '#9c7a05', accent: '#141414' }
 ];
 const LEADS = [0, 16, -12];
 const REDUCE = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -141,7 +141,7 @@ function endCarLocal(c, sc) {
   if (c.type === 'crash') {
     c.spinV = (Math.random() < .5 ? -1 : 1) * (2.5 + Math.random() * 1.5);
     const rd = vd + L * .55 + c.v * .1;
-    c.rock = { d: rd, x: laneX(c.i, rd), kind: Math.random() < .55 ? 'rock' : 'log', seed: Math.random() * 100 };
+    c.rock = { d: rd, x: laneX(c.i, rd), kind: Math.random() < .55 ? 'tires' : 'cones', seed: Math.random() * 100 };
     rocks.push(c.rock);
     burst(c, vd);
     S.shake = Math.max(S.shake, S.me?.bet?.car === c.i ? 12 : 5);
@@ -169,8 +169,17 @@ function physics(dt, now) {
     if (c.rock) c.d = Math.min(c.d, c.rock.d - L * .58 - LEADS[c.i] * Sc);
     const vd = visD(c, now), x = carX(c, vd);
     if (c.v > 15 * Sc) {
-      c.em += c.v * dt * .11 * (REDUCE ? .35 : 1);
-      while (c.em >= 1) { c.em--; P({ x: x + (Math.random() - .5) * CW * .9, d: vd - L / 2, vx: (Math.random() - .5) * 30 * Sc, vd: c.v * .35, dr: 2.5, r: (3 + Math.random() * 4) * Sc, g: 14 * Sc, life: .9 + Math.random() * .6, a: .42 }); }
+      // ასფალტზე — მსუბუქი საბურავის კვამლი/ჰაერის ნაკადი
+      c.em += c.v * dt * .05 * (REDUCE ? .35 : 1);
+      while (c.em >= 1) { c.em--; P({ x: x + (Math.random() - .5) * CW * .8, d: vd - L / 2, vx: (Math.random() - .5) * 20 * Sc, vd: c.v * .45, dr: 3, r: (2.5 + Math.random() * 3) * Sc, g: 12 * Sc, life: .5 + Math.random() * .4, a: .16 }); }
+      // დაჯახებისას ტრიალი — საბურავის შავი კვალი
+      if (c.ended && c.type === 'crash') {
+        const a = Math.atan(slope(vd)) + c.spin, ca = Math.cos(a), sa = Math.sin(a);
+        for (const s of [-1, 1]) {
+          const ox = s * CW * .42, oy = L * .3;
+          P({ k: 'skid', x: x + ox * ca - oy * sa, d: vd - (ox * sa + oy * ca), r: 2.6 * Sc, life: 5, a: .55, dr: 0 });
+        }
+      }
     }
     if (c.ended && sy(vd) < H + 60) {
       c.sm += dt * (c.type === 'stall' ? 16 : 7) * (REDUCE ? .4 : 1);
@@ -204,40 +213,94 @@ function pill(text, x, y, bg, fg) {
   ctx.beginPath(); ctx.moveTo(x - 4 * Sc, y + ph / 2 - .5); ctx.lineTo(x + 4 * Sc, y + ph / 2 - .5); ctx.lineTo(x, y + ph / 2 + 5 * Sc); ctx.closePath(); ctx.fill();
   ctx.fillStyle = fg; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, x, y + .5);
 }
+// თანამედროვე GT / ჰიპერქარი ზემოდან (წინა ნაწილი = −y)
+function carPath(l, w) {
+  ctx.beginPath();
+  ctx.moveTo(-w * .16, -l * .5);
+  ctx.quadraticCurveTo(0, -l * .53, w * .16, -l * .5);
+  ctx.bezierCurveTo(w * .36, -l * .48, w * .5, -l * .38, w * .5, -l * .22);
+  ctx.bezierCurveTo(w * .5, -l * .1, w * .42, -l * .04, w * .42, l * .06);
+  ctx.bezierCurveTo(w * .42, l * .14, w * .54, l * .2, w * .54, l * .34);
+  ctx.bezierCurveTo(w * .54, l * .44, w * .44, l * .5, w * .3, l * .5);
+  ctx.lineTo(-w * .3, l * .5);
+  ctx.bezierCurveTo(-w * .44, l * .5, -w * .54, l * .44, -w * .54, l * .34);
+  ctx.bezierCurveTo(-w * .54, l * .2, -w * .42, l * .14, -w * .42, l * .06);
+  ctx.bezierCurveTo(-w * .42, -l * .04, -w * .5, -l * .1, -w * .5, -l * .22);
+  ctx.bezierCurveTo(-w * .5, -l * .38, -w * .36, -l * .48, -w * .16, -l * .5);
+  ctx.closePath();
+}
 function drawCar(x, y, a, c) {
-  const l = L, w = CW;
+  const l = L * 1.05, w = CW * 1.08;
   ctx.save(); ctx.translate(x, y); ctx.rotate(a);
-  ctx.fillStyle = 'rgba(0,0,0,.35)'; rr(-w / 2 + 3 * Sc, -l / 2 + 4 * Sc, w, l, 6 * Sc); ctx.fill();
-  ctx.fillStyle = '#0d0d0d';
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) ctx.fillRect(sx * w / 2 - 2.5 * Sc, sz * l * .3 - 5 * Sc, 5 * Sc, 10 * Sc);
-  ctx.fillStyle = c.color; rr(-w / 2, -l / 2, w, l, 6 * Sc); ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.fillRect(-w * .09, -l / 2 + 2 * Sc, w * .18, l - 4 * Sc);
-  ctx.fillStyle = '#1a2330';
-  ctx.beginPath(); ctx.moveTo(-w * .38, -l * .18); ctx.lineTo(w * .38, -l * .18); ctx.lineTo(w * .3, -l * .3); ctx.lineTo(-w * .3, -l * .3); ctx.closePath(); ctx.fill();
-  ctx.fillRect(-w * .3, l * .18, w * .6, l * .09);
-  ctx.fillStyle = c.dark; rr(-w * .38, -l * .18, w * .76, l * .36, 3 * Sc); ctx.fill();
-  ctx.fillStyle = '#fff'; circ(0, 0, w * .27);
-  ctx.fillStyle = '#111'; ctx.font = `800 ${9 * Sc}px "Saira Condensed", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(c.num, 0, .6 * Sc);
-  ctx.fillStyle = '#fffbe0'; for (let k = -1.5; k <= 1.5; k++) circ(k * w * .19, -l * .43, 1.7 * Sc);
-  ctx.fillStyle = '#161616'; ctx.fillRect(-w * .55, l / 2 - 4 * Sc, w * 1.1, 3.5 * Sc);
+  // ჩრდილი
+  ctx.save(); ctx.translate(3 * Sc, 5 * Sc); carPath(l, w); ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.fill(); ctx.restore();
+  // საბურავები (უკანა — უფრო განიერი)
+  ctx.fillStyle = '#0b0b0b';
+  for (const sx of [-1, 1]) {
+    rr(sx * w * .5 - w * .1, -l * .33, w * .2, l * .17, 2 * Sc); ctx.fill();
+    rr(sx * w * .54 - w * .11, l * .23, w * .22, l * .18, 2 * Sc); ctx.fill();
+  }
+  // ძარა + მბზინავი ლაქი
+  carPath(l, w); ctx.fillStyle = c.color; ctx.fill();
+  const gl = ctx.createLinearGradient(-w / 2, 0, w / 2, 0);
+  gl.addColorStop(0, 'rgba(255,255,255,.3)'); gl.addColorStop(.45, 'rgba(255,255,255,0)'); gl.addColorStop(1, 'rgba(0,0,0,.32)');
+  ctx.fillStyle = gl; ctx.fill();
+  // ლივრეის ორმაგი ზოლი
+  ctx.save(); carPath(l, w); ctx.clip();
+  ctx.fillStyle = c.accent;
+  ctx.fillRect(-w * .13, -l * .52, w * .07, l * 1.04); ctx.fillRect(w * .06, -l * .52, w * .07, l * 1.04);
+  ctx.restore();
+  // კაპოტის ჰაერის ღიობები
+  ctx.fillStyle = 'rgba(0,0,0,.55)';
+  for (const sx of [-1, 1]) { ctx.beginPath(); ctx.ellipse(sx * w * .29, -l * .31, w * .07, l * .06, sx * .35, 0, 6.2832); ctx.fill(); }
+  // მინის კაპსულა
+  const gg = ctx.createLinearGradient(0, -l * .2, 0, l * .16);
+  gg.addColorStop(0, '#46637f'); gg.addColorStop(.35, '#0f1a25'); gg.addColorStop(1, '#070b10');
+  ctx.fillStyle = gg;
+  ctx.beginPath();
+  ctx.moveTo(-w * .3, -l * .12);
+  ctx.bezierCurveTo(-w * .26, -l * .24, w * .26, -l * .24, w * .3, -l * .12);
+  ctx.bezierCurveTo(w * .34, l * .02, w * .28, l * .14, w * .18, l * .17);
+  ctx.lineTo(-w * .18, l * .17);
+  ctx.bezierCurveTo(-w * .28, l * .14, -w * .34, l * .02, -w * .3, -l * .12);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.lineWidth = 1 * Sc;
+  ctx.beginPath(); ctx.moveTo(-w * .2, -l * .165); ctx.quadraticCurveTo(0, -l * .205, w * .2, -l * .165); ctx.stroke();
+  // სარკეები
+  ctx.fillStyle = c.dark;
+  for (const sx of [-1, 1]) { ctx.beginPath(); ctx.ellipse(sx * w * .47, -l * .1, w * .09, l * .03, 0, 0, 6.2832); ctx.fill(); }
+  // ძრავის სახურავი + ნომერი
+  ctx.fillStyle = '#fff'; rr(-w * .2, l * .21, w * .4, l * .13, 2 * Sc); ctx.fill();
+  ctx.fillStyle = '#111'; ctx.font = `800 ${8.5 * Sc}px "Saira Condensed", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(c.num, 0, l * .275 + .5 * Sc);
+  // LED ფარები
+  ctx.strokeStyle = '#eaf7ff'; ctx.lineWidth = 1.6 * Sc; ctx.lineCap = 'round';
+  for (const sx of [-1, 1]) { ctx.beginPath(); ctx.moveTo(sx * w * .2, -l * .478); ctx.lineTo(sx * w * .4, -l * .41); ctx.stroke(); }
+  // უკანა ფრთა (კარბონი) + სტოპ-სიგნალის LED ზოლი
+  ctx.fillStyle = '#121212'; rr(-w * .62, l * .42, w * 1.24, l * .07, 1.5 * Sc); ctx.fill();
+  ctx.fillStyle = c.dark; ctx.fillRect(-w * .62, l * .405, w * .06, l * .1); ctx.fillRect(w * .56, l * .405, w * .06, l * .1);
+  ctx.fillStyle = '#ff2b2b'; ctx.fillRect(-w * .34, l * .49, w * .68, 1.4 * Sc);
   ctx.restore();
 }
-function drawRock(r) {
+function drawObstacle(r) {
   const y = sy(r.d); if (y < -40 || y > H + 40) return;
   ctx.save(); ctx.translate(r.x, y);
-  if (r.kind === 'rock') {
-    ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(3 * Sc, 4 * Sc, 15 * Sc, 11 * Sc, 0, 0, 6.2832); ctx.fill();
-    for (const [s, col, o] of [[1, '#817b6b', 0], [.6, '#a59f8d', -3]]) {
-      ctx.beginPath();
-      for (let k = 0; k < 8; k++) { const an = k / 8 * 6.2832, rad = 14 * Sc * s * (.8 + rnd(r.seed + k) * .35); ctx.lineTo(Math.cos(an) * rad + o * Sc, Math.sin(an) * rad * .8 + o * Sc); }
-      ctx.closePath(); ctx.fillStyle = col; ctx.fill();
-    }
+  if (r.kind === 'tires') {
+    const pts = [[-9, 3], [0, -4], [9, 3], [0, 9]];
+    for (const [px, py] of pts) { ctx.fillStyle = 'rgba(0,0,0,.35)'; circ((px + 2) * Sc, (py + 3) * Sc, 7 * Sc); }
+    pts.forEach(([px, py], k) => {
+      ctx.fillStyle = '#161616'; circ(px * Sc, py * Sc, 7 * Sc);
+      ctx.fillStyle = k % 2 ? '#e0231c' : '#f2f2f2'; circ(px * Sc, py * Sc, 4.2 * Sc);
+      ctx.fillStyle = '#161616'; circ(px * Sc, py * Sc, 2.4 * Sc);
+    });
   } else {
-    ctx.rotate(.22);
-    ctx.fillStyle = 'rgba(0,0,0,.3)'; rr(-19 * Sc, -2 * Sc, 42 * Sc, 11 * Sc, 5 * Sc); ctx.fill();
-    ctx.fillStyle = '#5a3a20'; rr(-21 * Sc, -5.5 * Sc, 42 * Sc, 11 * Sc, 5 * Sc); ctx.fill();
-    ctx.fillStyle = '#c89a62'; circ(-19 * Sc, 0, 5 * Sc); circ(19 * Sc, 0, 5 * Sc);
-    ctx.fillStyle = '#8d6238'; circ(-19 * Sc, 0, 2 * Sc); circ(19 * Sc, 0, 2 * Sc);
+    for (const [px, py] of [[-11, 1], [1, -6], [11, 4]]) {
+      ctx.fillStyle = 'rgba(0,0,0,.3)'; circ((px + 2) * Sc, (py + 3) * Sc, 6 * Sc);
+      ctx.fillStyle = '#ff6a00'; rr((px - 6) * Sc, (py - 6) * Sc, 12 * Sc, 12 * Sc, 2 * Sc); ctx.fill();
+      ctx.fillStyle = '#ff8a2a'; circ(px * Sc, py * Sc, 4.4 * Sc);
+      ctx.fillStyle = '#fff'; circ(px * Sc, py * Sc, 2.6 * Sc);
+      ctx.fillStyle = '#ff6a00'; circ(px * Sc, py * Sc, 1.3 * Sc);
+    }
   }
   ctx.restore();
 }
@@ -250,40 +313,70 @@ function drawParts(top) {
       ctx.save(); ctx.translate(p.x, y); ctx.rotate(p.rot); ctx.globalAlpha = Math.min(1, al * 1.5);
       ctx.fillStyle = p.col; ctx.fillRect(-p.r, -p.r / 2, p.r * 2, p.r); ctx.restore();
     } else {
-      ctx.fillStyle = p.k === 'smoke' ? `rgba(128,126,120,${al})` : `rgba(214,188,140,${al})`;
+      ctx.fillStyle = p.k === 'smoke' ? `rgba(120,122,128,${al})` : p.k === 'skid' ? `rgba(12,12,12,${al})` : `rgba(215,218,224,${al})`;
       circ(p.x, y, p.r);
     }
   }
   ctx.globalAlpha = 1;
 }
-const CROWD = ['#d64545', '#3b6fd1', '#ece6d4', '#2e8b57', '#e0a030', '#222'];
+const CROWD = ['#e0231c', '#1f6fff', '#f2f2f2', '#f5c518', '#16a34a', '#151515', '#ff7ab6', '#ff8a2a'];
+const ADS = [['#e0231c', '#ffffff'], ['#0b0b0b', '#f5c518'], ['#1f6fff', '#ffffff'], ['#f2f2f2', '#e0231c'], ['#16a34a', '#ffffff']];
+// ტრასის პარალელური პოლილინია offset მანძილზე ცენტრიდან
+function trackLine(d0, d1, off, step = 10) {
+  ctx.beginPath();
+  for (let d = d0; d <= d1; d += step) ctx.lineTo(cx(d) + off, sy(d));
+}
+function band(d0, d1, a, b, side, col) {
+  ctx.beginPath();
+  for (let d = d0; d <= d1; d += 10) ctx.lineTo(cx(d) + side * a, sy(d));
+  for (let d = d1; d >= d0; d -= 10) ctx.lineTo(cx(d) + side * b, sy(d));
+  ctx.closePath(); ctx.fillStyle = col; ctx.fill();
+}
 function drawSide(d0, d1) {
-  const cs = 90;
-  for (let s = Math.floor(d0 / cs); s <= Math.ceil(d1 / cs); s++) {
-    const r = rnd(s * 41.3);
-    if (r > .32) continue;
-    const side = r < .16 ? -1 : 1, d = s * cs, n = 3 + Math.floor(rnd(s * 2.2) * 5);
-    const bx = cx(d) + side * (roadW / 2 + 24 * Sc);
-    for (let j = 0; j < n; j++) {
-      const px = bx + side * rnd(s + j * 1.7) * 16 * Sc, py = sy(d) + (j - n / 2) * 9 * Sc;
-      ctx.fillStyle = CROWD[Math.floor(rnd(s * 3 + j) * CROWD.length)];
-      ctx.beginPath(); ctx.ellipse(px, py, 4.5 * Sc, 3 * Sc, 0, 0, 6.2832); ctx.fill();
-      ctx.fillStyle = rnd(s + j * 9) < .5 ? '#3a2a1c' : '#e3c29a'; circ(px, py, 2.2 * Sc);
+  const hw = roadW / 2, wall = hw + 48 * Sc;
+  // საბურავების კედელი + რეკლამები
+  ctx.lineCap = 'butt';
+  for (const s of [-1, 1]) {
+    ctx.lineWidth = 10 * Sc; ctx.strokeStyle = '#141414'; trackLine(d0, d1, s * wall); ctx.stroke();
+    const as = 70;
+    for (let k = Math.floor(d0 / as); k <= Math.ceil(d1 / as); k++) {
+      const [bg, fg] = ADS[Math.floor(rnd(k * 5.1 + s * 2) * ADS.length)];
+      const da = k * as + 8, db = k * as + as - 8;
+      ctx.lineWidth = 7 * Sc; ctx.strokeStyle = bg; trackLine(da, db, s * wall, 6); ctx.stroke();
+      ctx.lineWidth = 2 * Sc; ctx.strokeStyle = fg; trackLine(da + 10, db - 10, s * wall, 6); ctx.stroke();
+    }
+    ctx.lineWidth = 1.5 * Sc; ctx.strokeStyle = 'rgba(220,226,232,.55)'; trackLine(d0, d1, s * (wall + 12 * Sc)); ctx.stroke();
+  }
+  // ტრიბუნები მაყურებლებით
+  const gsz = 380, rows = 6, rowGap = 7 * Sc, base = wall + 20 * Sc;
+  for (let s = Math.floor(d0 / gsz) - 1; s <= Math.ceil(d1 / gsz); s++) {
+    if (rnd(s * 13.7) > .7) continue;
+    const side = rnd(s * 3.3) < .5 ? -1 : 1;
+    const da = Math.max(d0, s * gsz + 40), db = Math.min(d1, s * gsz + gsz - 40);
+    if (da >= db) continue;
+    band(da, db, base - 4 * Sc, base + rows * rowGap + 6 * Sc, side, '#8d959c');
+    band(da, db, base + rows * rowGap + 6 * Sc, base + rows * rowGap + 12 * Sc, side, '#c9ced3');
+    for (let r = 0; r < rows; r++) {
+      const off = side * (base + r * rowGap + 2 * Sc);
+      for (let d = Math.ceil(da / 6) * 6; d <= db; d += 6) {
+        ctx.fillStyle = CROWD[Math.floor(rnd(d * .37 + r * 11.3) * CROWD.length)];
+        circ(cx(d) + off, sy(d), 2.5 * Sc);
+      }
     }
   }
+  // ხეები შორს
   const ts = 64;
   for (let s = Math.floor(d0 / ts) - 1; s <= Math.ceil(d1 / ts) + 1; s++) {
-    for (const side of [-1, 1]) for (let k = 0; k < 2; k++) {
-      if (k === 1 && rnd(s * 31.7 + side * 9.1) < .4) continue;
-      const d = s * ts + rnd(s * 7.7 + side * 3 + k * 5.5) * ts;
-      const dist = 30 * Sc + rnd(s * 3.1 + side + k * 8.8) * W * .5;
-      const x = cx(d) + side * (roadW / 2 + dist), rad = (12 + rnd(s * 1.9 + k + side * 2) * 16) * Sc;
+    for (const side of [-1, 1]) {
+      if (rnd(s * 31.7 + side * 9.1) < .45) continue;
+      const d = s * ts + rnd(s * 7.7 + side * 3) * ts;
+      const x = cx(d) + side * (base + rows * rowGap + 40 * Sc + rnd(s * 3.1 + side) * W * .4), rad = (12 + rnd(s * 1.9 + side * 2) * 14) * Sc;
       if (x < -40 || x > W + 40) continue;
       const y = sy(d);
-      ctx.fillStyle = 'rgba(0,0,0,.28)'; circ(x + rad * .35, y + rad * .4, rad);
-      ctx.fillStyle = '#18261a'; circ(x, y, rad);
-      ctx.fillStyle = '#24391f'; circ(x - rad * .15, y - rad * .15, rad * .72);
-      ctx.fillStyle = '#35512a'; circ(x - rad * .3, y - rad * .3, rad * .36);
+      ctx.fillStyle = 'rgba(0,0,0,.25)'; circ(x + rad * .35, y + rad * .4, rad);
+      ctx.fillStyle = '#1d4d24'; circ(x, y, rad);
+      ctx.fillStyle = '#28632f'; circ(x - rad * .15, y - rad * .15, rad * .72);
+      ctx.fillStyle = '#3c7d3f'; circ(x - rad * .3, y - rad * .3, rad * .36);
     }
   }
 }
@@ -292,40 +385,62 @@ function draw(now) {
   shakeY = (Math.random() - .5) * sh;
   ctx.save(); ctx.translate((Math.random() - .5) * sh, 0);
   const d1 = S.cam + baseY + 80, d0 = S.cam - (H - baseY) - 80;
-  ctx.fillStyle = '#27351f'; ctx.fillRect(-30, -30, W + 60, H + 60);
-  const gs = 34;
-  for (let s = Math.floor(d0 / gs); s <= Math.ceil(d1 / gs); s++) for (let k = 0; k < 5; k++) {
-    const a = rnd(s * 17.1 + k * 3.7), b = rnd(s * 5.3 + k * 11.9), c = rnd(s * 2.9 + k * 7.7);
-    ctx.fillStyle = c < .5 ? 'rgba(66,88,46,.5)' : 'rgba(16,26,13,.38)';
-    ctx.beginPath(); ctx.ellipse(a * W, sy(s * gs + b * gs), (6 + c * 16) * Sc, (3 + c * 6) * Sc, 0, 0, 6.2832); ctx.fill();
+  const hw = roadW / 2, K = 8 * Sc, RO = 34 * Sc;
+  // გაკრეჭილი ბალახი
+  ctx.fillStyle = '#2f6b35'; ctx.fillRect(-30, -30, W + 60, H + 60);
+  const gs = 70; ctx.fillStyle = '#377a3d';
+  for (let s = Math.floor(d0 / gs); s <= Math.ceil(d1 / gs); s++) if (s % 2 === 0) { const ya = sy(s * gs + gs), yb = sy(s * gs); ctx.fillRect(-30, ya, W + 60, yb - ya); }
+  // run-off ზონა
+  roadPoly(d0, d1, hw + K + RO, '#5a646b');
+  for (const s of [-1, 1]) band(d0, d1, hw + K + RO - 6 * Sc, hw + K + RO, s, '#1f8a4c');
+  // ბორდიურები (წითელი / თეთრი)
+  const ks = 18;
+  for (let s = Math.floor(d0 / ks); s <= Math.ceil(d1 / ks); s++) {
+    const da = s * ks, db = da + ks;
+    ctx.fillStyle = s % 2 ? '#f4f4f4' : '#e0231c';
+    for (const sd of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(cx(da) + sd * hw, sy(da)); ctx.lineTo(cx(db) + sd * hw, sy(db));
+      ctx.lineTo(cx(db) + sd * (hw + K), sy(db)); ctx.lineTo(cx(da) + sd * (hw + K), sy(da));
+      ctx.closePath(); ctx.fill();
+    }
   }
-  roadPoly(d0, d1, roadW / 2 + 10 * Sc, '#6b5233');
-  roadPoly(d0, d1, roadW / 2, '#b08a59');
-  roadPoly(d0, d1, roadW * .1, 'rgba(214,183,134,.16)');
-  ctx.lineWidth = 5 * Sc; ctx.strokeStyle = 'rgba(92,64,34,.28)'; ctx.lineCap = 'round';
-  for (let i = 0; i < 3; i++) for (const o of [-.32, .32]) {
-    ctx.beginPath(); for (let d = d0; d <= d1; d += 14) ctx.lineTo(laneX(i, d) + o * CW * 1.4, sy(d)); ctx.stroke();
-  }
-  const ss = 16;
-  for (let s = Math.floor(d0 / ss); s <= Math.ceil(d1 / ss); s++) for (let k = 0; k < 7; k++) {
+  // ასფალტი
+  roadPoly(d0, d1, hw, '#2c3035');
+  const ss = 14;
+  for (let s = Math.floor(d0 / ss); s <= Math.ceil(d1 / ss); s++) for (let k = 0; k < 6; k++) {
     const a = rnd(s * 9.7 + k * 1.3), b = rnd(s * 3.3 + k * 5.1), d = s * ss + b * ss;
-    ctx.fillStyle = k % 2 ? 'rgba(232,208,164,.55)' : 'rgba(96,70,40,.45)';
-    ctx.fillRect(cx(d) + (a - .5) * roadW * .96, sy(d), 2.2 * Sc, 2.2 * Sc);
+    ctx.fillStyle = k % 2 ? 'rgba(255,255,255,.07)' : 'rgba(0,0,0,.2)';
+    ctx.fillRect(cx(d) + (a - .5) * roadW * .98, sy(d), 2 * Sc, 2 * Sc);
   }
-  const ps = 150;
-  for (let s = Math.floor(d0 / ps); s <= Math.ceil(d1 / ps); s++) {
-    const d = s * ps, y = sy(d);
-    for (const side of [-1, 1]) { const x = cx(d) + side * (roadW / 2 + 5 * Sc); ctx.fillStyle = '#f3efe6'; circ(x, y, 3 * Sc); ctx.fillStyle = '#d8422e'; circ(x, y, 1.6 * Sc); }
+  // რეზინის კვალი რბოლის ხაზზე
+  ctx.lineCap = 'butt'; ctx.lineWidth = 10 * Sc; ctx.strokeStyle = 'rgba(0,0,0,.17)';
+  for (let i = 0; i < 3; i++) { ctx.beginPath(); for (let d = d0; d <= d1; d += 12) ctx.lineTo(laneX(i, d), sy(d)); ctx.stroke(); }
+  // თეთრი კიდის ხაზები
+  ctx.lineWidth = 2.4 * Sc; ctx.strokeStyle = 'rgba(255,255,255,.92)';
+  for (const sd of [-1, 1]) { trackLine(d0, d1, sd * (hw - 4 * Sc)); ctx.stroke(); }
+  // წყვეტილი ზოლის გამყოფები
+  ctx.lineWidth = 2 * Sc; ctx.strokeStyle = 'rgba(255,255,255,.55)';
+  const dl = 28;
+  for (let s = Math.floor(d0 / dl); s <= Math.ceil(d1 / dl); s++) {
+    if (s % 2) continue;
+    for (const o of [-.5, .5]) { trackLine(s * dl, s * dl + dl, o * laneGap, 7); ctx.stroke(); }
+  }
+  // სასტარტო ბადე + ჭადრაკული ხაზი
+  for (let i = 0; i < 3; i++) {
+    const gd = LEADS[i] * Sc - L * .62, gx = laneX(i, gd), gy = sy(gd), bw = CW * .85;
+    ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 2 * Sc;
+    ctx.beginPath(); ctx.moveTo(gx - bw, gy - 10 * Sc); ctx.lineTo(gx - bw, gy); ctx.lineTo(gx + bw, gy); ctx.lineTo(gx + bw, gy - 10 * Sc); ctx.stroke();
   }
   const sl = 52 * Sc;
   if (sl > d0 && sl < d1) {
-    const y = sy(sl), q = 7 * Sc, x0 = cx(sl) - roadW / 2, n = Math.ceil(roadW / q);
+    const y = sy(sl), q = 7 * Sc, x0 = cx(sl) - hw, n = Math.ceil(roadW / q);
     for (let j = 0; j < n; j++) for (let r = 0; r < 2; r++) {
-      ctx.fillStyle = (j + r) % 2 ? '#f5f1e6' : '#1b1b1b';
+      ctx.fillStyle = (j + r) % 2 ? '#f5f5f5' : '#151515';
       ctx.fillRect(x0 + j * q, y + (r - 1) * q, Math.min(q, roadW - j * q), q);
     }
   }
-  for (const r of rocks) drawRock(r);
+  for (const r of rocks) drawObstacle(r);
   drawParts(false);
   const myBet = S.me?.bet;
   const mine = myBet ? myBet.car : (S.phase === 'bet' ? S.sel : -1);
@@ -349,7 +464,7 @@ function draw(now) {
   }
   ctx.restore();
   const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, 'rgba(255,176,96,.12)'); g.addColorStop(.45, 'rgba(255,176,96,0)');
+  g.addColorStop(0, 'rgba(255,255,255,.07)'); g.addColorStop(.45, 'rgba(255,255,255,0)');
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
   const v = ctx.createRadialGradient(W / 2, H * .55, Math.min(W, H) * .35, W / 2, H * .55, Math.max(W, H) * .8);
   v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,.45)');
@@ -437,7 +552,8 @@ function updateBal() {
 }
 
 function mini(c) {
-  return `<svg class="mini" viewBox="0 0 26 44" aria-hidden="true"><g fill="#0d0d0d"><rect x="0" y="8" width="4" height="9" rx="1"/><rect x="22" y="8" width="4" height="9" rx="1"/><rect x="0" y="28" width="4" height="9" rx="1"/><rect x="22" y="28" width="4" height="9" rx="1"/></g><rect x="2" y="1" width="22" height="42" rx="6" fill="${c.color}"/><rect x="11" y="2" width="4" height="40" fill="#fff" opacity=".85"/><path d="M5 14h16l-2-5H7z" fill="#1a2330"/><rect x="5" y="14" width="16" height="15" rx="2" fill="${c.dark}"/><circle cx="13" cy="21.5" r="5" fill="#fff"/><text x="13" y="24" text-anchor="middle" font-size="7" font-weight="800" font-family="Saira Condensed, sans-serif" fill="#111">${c.num}</text><rect x="6" y="29" width="14" height="4" fill="#1a2330"/><rect x="1" y="40" width="24" height="3" fill="#161616"/></svg>`;
+  const body = 'M10 1.5Q13 .6 16 1.5C20.5 2.3 23 6 23 10.5C23 14 21 15.5 21 18.5C21 22 24 24 24 29.5C24 34 22 36 19.5 36H6.5C4 36 2 34 2 29.5C2 24 5 22 5 18.5C5 15.5 3 14 3 10.5C3 6 5.5 2.3 10 1.5Z';
+  return `<svg class="mini" viewBox="0 0 26 40" aria-hidden="true"><g fill="#0b0b0b"><rect x="1.5" y="5.5" width="4.5" height="7" rx="1"/><rect x="20" y="5.5" width="4.5" height="7" rx="1"/><rect x="0.5" y="24" width="5.5" height="7.5" rx="1"/><rect x="20" y="24" width="5.5" height="7.5" rx="1"/></g><path d="${body}" fill="${c.color}"/><path d="M10.2 1.2h1.8v35h-1.8zM14 1.2h1.8v35H14z" fill="${c.accent}"/><path d="M6 14.5C7 10 19 10 20 14.5C21 19 19.5 22.5 17 23.5H9C6.5 22.5 5 19 6 14.5Z" fill="#0f1a25"/><rect x="8.5" y="25.5" width="9" height="5" rx="1" fill="#fff"/><text x="13" y="29.6" text-anchor="middle" font-size="5" font-weight="800" font-family="Saira Condensed, sans-serif" fill="#111">${c.num}</text><rect x="0.5" y="34.5" width="25" height="3" rx="1" fill="#121212"/><path d="M5 4.5 8.5 2.5M21 4.5 17.5 2.5" stroke="#eaf7ff" stroke-width="1.1" stroke-linecap="round"/></svg>`;
 }
 const carsEl = $('#cars');
 carsEl.innerHTML = CARS.map((c, i) => `<button class="car-card" type="button" id="car${i}" data-i="${i}" style="--c:${c.color}" aria-pressed="false">${mini(c)}<div class="cc-body"><div class="cc-name">${c.name}<span class="cc-num">#${c.num}</span></div><div class="cc-status" id="st${i}"></div></div><div class="cc-bets"><b id="cb${i}">0</b><small>ფსონი</small></div></button>`).join('');

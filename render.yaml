@@ -1,0 +1,15 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: gravel-rush
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Lovable-ის ფრონტენდის დომენი, როცა გადავიტანთ (მძიმით გამოყოფილი)
+      - key: ALLOWED_ORIGINS
+        sync: false

@@ -1,0 +1,17 @@
+{
+  "name": "gravel-rush",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Rally crash game — server-authoritative, provably fair, multiplayer (demo credits)",
+  "type": "module",
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

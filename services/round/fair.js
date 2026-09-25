@@ -9,7 +9,7 @@
 // სერვერს არ შეუძლია შედეგის შეცვლა: seed-ები ჯაჭვით წინასწარაა დაფიქსირებული,
 // clientSeed კი ჯაჭვის გამოქვეყნების შემდეგ ირჩევა (პროდაქშენში — მომავალი ბლოკის ჰეში).
 import { createHash, createHmac, randomBytes } from 'node:crypto';
-import { crashFromHash, roundMessage, CARS } from '../public/shared/math.js';
+import { crashFromHash, roundMessage, CARS } from '../../public/shared/math.js';
 
 export const sha256 = s => createHash('sha256').update(s).digest('hex');
 export const newSecret = () => randomBytes(32).toString('hex');

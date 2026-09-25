@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
-import { buildChain, roundResults } from '../../server/fair.js';
+import { buildChain, roundResults } from '../../services/round/fair.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const ENTRY = process.env.GR_ENTRY || join(ROOT, 'server', 'index.js');
@@ -17,26 +17,44 @@ export const CLIENT_SEED = 'contract-client-seed';
 export const CHAIN_LENGTH = 500;
 export const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+// GR_MODE=separate — სამი სერვისი სამ ცალკე პროცესად (services/*/main.js);
+// ნაგულისხმევად — გამშვები server/index.js (სამი სერვისი ერთ პროცესში).
+export const MODE = process.env.GR_MODE || 'launcher';
+
+function spawnProc(entry, env, pattern) {
+  const child = spawn(process.execPath, [entry], { env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+  let out = '';
+  const match = new Promise((resolve, reject) => {
+    const to = setTimeout(() => reject(new Error(entry + ' ვერ გაეშვა:\n' + out)), 20000);
+    child.stdout.on('data', d => { out += d; const m = out.match(pattern); if (m) { clearTimeout(to); resolve(m); } });
+    child.stderr.on('data', d => { out += d; });
+    child.on('exit', code => { clearTimeout(to); reject(new Error(`${entry} დასრულდა (${code}):\n${out}`)); });
+  });
+  return { child, match, output: () => out };
+}
+
 export async function startSystem({ betMs = 700, endMs = 250, speed = 20, dataDir } = {}) {
   dataDir ||= mkdtempSync(join(tmpdir(), 'gr-test-'));
-  const child = spawn(process.execPath, [ENTRY], {
-    env: {
-      ...process.env, PORT: '0', DATA_DIR: dataDir, CHAIN_SECRET: TEST_SECRET, CLIENT_SEED,
-      CHAIN_LENGTH: String(CHAIN_LENGTH), BET_MS: String(betMs), END_MS: String(endMs), SPEED: String(speed)
-    },
-    stdio: ['ignore', 'pipe', 'pipe']
-  });
-  let out = '';
-  const port = await new Promise((resolve, reject) => {
-    const to = setTimeout(() => reject(new Error('სისტემა ვერ გაეშვა:\n' + out)), 20000);
-    child.stdout.on('data', d => {
-      out += d;
-      const m = out.match(/Gravel Rush → http:\/\/localhost:(\d+)/);
-      if (m) { clearTimeout(to); resolve(Number(m[1])); }
-    });
-    child.stderr.on('data', d => { out += d; });
-    child.on('exit', code => { clearTimeout(to); reject(new Error(`პროცესი დასრულდა (${code}):\n${out}`)); });
-  });
+  const game = { CHAIN_SECRET: TEST_SECRET, CLIENT_SEED, CHAIN_LENGTH: String(CHAIN_LENGTH), BET_MS: String(betMs), END_MS: String(endMs), SPEED: String(speed) };
+  const procs = [];
+  let port;
+  if (MODE === 'separate') {
+    const INTERNAL_KEY = 'separate-mode-key-' + Math.random().toString(36).slice(2);
+    const svc = n => join(ROOT, 'services', n, 'main.js');
+    const r = spawnProc(svc('round'), { ...game, INTERNAL_KEY, ROUND_PORT: '0', DATA_DIR: join(dataDir, 'round') }, /round-service → (\S+)/);
+    procs.push(r);
+    const roundUrl = (await r.match)[1];
+    const b = spawnProc(svc('bets'), { INTERNAL_KEY, ROUND_URL: roundUrl, BETS_PORT: '0', DATA_DIR: join(dataDir, 'bets') }, /bets-service → (\S+)/);
+    procs.push(b);
+    const betsUrl = (await b.match)[1];
+    const g = spawnProc(svc('gateway'), { INTERNAL_KEY, ROUND_URL: roundUrl, BETS_URL: betsUrl, PORT: '0' }, /Gravel Rush → http:\/\/localhost:(\d+)/);
+    procs.push(g);
+    port = Number((await g.match)[1]);
+  } else {
+    const p = spawnProc(ENTRY, { ...game, PORT: '0', DATA_DIR: dataDir }, /Gravel Rush → http:\/\/localhost:(\d+)/);
+    procs.push(p);
+    port = Number((await p.match)[1]);
+  }
   const chain = buildChain(TEST_SECRET, CHAIN_LENGTH);
   const clients = new Set();
   return {
@@ -45,15 +63,15 @@ export async function startSystem({ betMs = 700, endMs = 250, speed = 20, dataDi
     wsUrl: `ws://localhost:${port}`,
     expected: round => roundResults(chain[round], CLIENT_SEED),
     ledger() {
-      const p = join(dataDir, 'ledger.jsonl');
-      return existsSync(p) ? readFileSync(p, 'utf8').trim().split('\n').filter(Boolean).map(l => JSON.parse(l)) : [];
+      const p = [join(dataDir, 'bets', 'ledger.jsonl'), join(dataDir, 'ledger.jsonl')].find(existsSync) || '';
+      return p ? readFileSync(p, 'utf8').trim().split('\n').filter(Boolean).map(l => JSON.parse(l)) : [];
     },
     async connect(opts) { const c = await Client.connect(this, opts); clients.add(c); return c; },
-    output: () => out,
+    output: () => procs.map(p => p.output()).join('\n'),
     /** მყისიერი გათიშვა (ავარიის იმიტაცია) */
     async stop({ keepData = false } = {}) {
       for (const c of clients) c.close();
-      if (child.exitCode === null) { child.kill('SIGKILL'); await once(child, 'exit'); }
+      for (const { child } of procs.reverse()) if (child.exitCode === null) { child.kill('SIGKILL'); await once(child, 'exit'); }
       if (!keepData) rmSync(dataDir, { recursive: true, force: true });
     }
   };

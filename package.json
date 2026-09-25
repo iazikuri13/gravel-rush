@@ -7,7 +7,11 @@
   "scripts": {
     "start": "node server/index.js",
     "test": "node --test test/*.test.js test/services/*.test.js",
-    "test:contract": "node --test test/contract.test.js"
+    "test:contract": "node --test test/contract.test.js",
+    "test:separate": "node test/run-separate.js",
+    "start:round": "node services/round/main.js",
+    "start:bets": "node services/bets/main.js",
+    "start:gateway": "node services/gateway/main.js"
   },
   "dependencies": {
     "ws": "^8.18.0"

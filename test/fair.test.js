@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomBytes, createHmac } from 'node:crypto';
-import { buildChain, roundResults, sha256 } from '../server/fair.js';
+import { buildChain, roundResults, sha256 } from '../services/round/fair.js';
 import { crashFromHash, payout, mult100At, endTime, MAX_CRASH_100 } from '../public/shared/math.js';
 import { resultsFromSeed, verifyChain } from '../public/shared/verify.js';
 

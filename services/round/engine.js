@@ -86,6 +86,8 @@ export class RoundEngine extends EventEmitter {
     const item = { round: this.round, hash: this.roundHash, seed: this.seed, results: this.cars.map(c => ({ crash100: c.crash100, type: c.type })) };
     this.history.unshift(item);
     this.history.length = Math.min(this.history.length, RULES.historySize);
+    // მუდმივი ჩანაწერი ადმინისთვის (მეხსიერებაში მხოლოდ ბოლო რაუნდებია)
+    this.store.append('rounds.jsonl', { ...item, raceStart: this.raceStart, endedAt: this.phaseStart });
     this.emit('event', 'round_ended', { item, state: this.publicState() });
     this.timer = setTimeout(() => this.#newRound(), this.endMs);
   }

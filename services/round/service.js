@@ -7,11 +7,14 @@
 //  GET  /rounds/accepting               იღებს თუ არა ფსონს ახლა
 //  POST /rounds/:round/check            {car, m100?} → {ok, m100}
 //  GET  /events                         SSE: bet_open, race_started, car_ended, round_ended
+//  GET  /admin/rounds?limit=            დასრულებული რაუნდები ჟურნალიდან (ადმინი)
 //
 // ყველა მარშრუტი (გარდა /health) მოითხოვს x-internal-key-ს.
 import { RoundEngine } from './engine.js';
 import { JsonStore } from '../lib/store.js';
+import { join } from 'node:path';
 import { router, listen, EventHub, HttpError } from '../lib/http.js';
+import { tailJsonl } from '../lib/tail.js';
 
 export async function startRoundService({ port = 0, host = '127.0.0.1', dataDir, key, autostart = true, ...engineOpts }) {
   if (!key) throw new Error('INTERNAL_KEY აუცილებელია');
@@ -31,7 +34,8 @@ export async function startRoundService({ port = 0, host = '127.0.0.1', dataDir,
       if (m100 !== null && !Number.isInteger(m100)) throw new HttpError(400, 'm100');
       return engine.check({ round: Number(params.round), car, m100 });
     }],
-    ['GET', '/events', ({ req, res }) => { hub.handle(req, res); }]
+    ['GET', '/events', ({ req, res }) => { hub.handle(req, res); }],
+    ['GET', '/admin/rounds', ({ query }) => tailJsonl(join(dataDir, 'rounds.jsonl'), Math.min(1000, Number(query.get('limit')) || 200))]
   ], { key });
 
   const { server, port: p, url } = await listen(handler, { port, host });

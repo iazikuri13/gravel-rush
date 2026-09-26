@@ -11,6 +11,8 @@ const gw = await startGateway({
   key: env.INTERNAL_KEY,
   roundUrl: env.ROUND_URL || 'http://127.0.0.1:4101',
   betsUrl: env.BETS_URL || 'http://127.0.0.1:4102',
-  allowedOrigins: (env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean)
+  allowedOrigins: (env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean),
+  integrationsUrl: env.INTEGRATIONS_URL || null,
+  adminPassword: env.ADMIN_PASSWORD || null
 });
 console.log(`Gravel Rush → http://localhost:${gw.port}`);

@@ -42,12 +42,16 @@ const integrations = await startIntegrationsService({
 });
 demo?.setProviderUrl(integrations.url + '/p/upgaming-demo');
 
+// ადმინის პაროლი: ADMIN_PASSWORD; თუ არ არის მითითებული — იქმნება ყოველ გაშვებაზე და იწერება ლოგში
+const adminPassword = env.ADMIN_PASSWORD || randomBytes(9).toString('base64url');
+
 const bets = await startBetsService({ port: num(env.BETS_PORT) ?? 0, dataDir: join(DATA, 'bets'), key, roundUrl: round.url, integrationsUrl: integrations.url });
 const gateway = await startGateway({
   port: num(env.PORT) ?? 3000,
   publicDir: join(ROOT, 'public'),
   key, roundUrl: round.url, betsUrl: bets.url,
   allowedOrigins: (env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean),
+  integrationsUrl: integrations.url, adminPassword,
   proxies: [
     { prefix: '/p/', target: integrations.url, strip: false },
     ...(demo ? [{ prefix: '/demo-operator/', target: demo.url, strip: true }] : [])
@@ -58,6 +62,7 @@ console.log(`round-service → ${round.url}`);
 console.log(`bets-service  → ${bets.url}`);
 console.log(`integrations  → ${integrations.url}  პლატფორმები: ${platforms.map(p => p.id).join(', ') || '—'}`);
 if (demo) console.log(`სატესტო კაზინო → http://localhost:${gateway.port}/demo-operator/`);
+console.log(`ადმინი → http://localhost:${gateway.port}/admin/  ${env.ADMIN_PASSWORD ? '(პაროლი: ADMIN_PASSWORD)' : `დროებითი პაროლი: ${adminPassword}  — დააყენე ADMIN_PASSWORD`}`);
 console.log(`commit: ${round.engine.commit}  ·  client seed: ${round.engine.clientSeed}  ·  შემდეგი რაუნდი: #${round.engine.meta.nextRound}`);
 console.log(`Gravel Rush → http://localhost:${gateway.port}`);
 round.start();   // რაუნდები იწყება მას შემდეგ, რაც ყველა გამომწერი დაკავშირდა

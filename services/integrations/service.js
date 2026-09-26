@@ -9,9 +9,16 @@
 //   GET    /sessions/:token                 → სესია (მოთამაშე, ვალუტა, პლატფორმა…)
 //   GET    /sessions/:token/balance         → { balance }            (ცენტები)
 //   POST   /sessions/:token/tx              { id, kind, roundId, amount, ref? } → { balance, platformTx }
+//   GET    /admin/overview                  პლატფორმები (საიდუმლოების გარეშე), სესიები, ფრიბეტები, ბოლო ტრანზაქციები
 import { router, listen, sendJson, HttpError } from '../lib/http.js';
 import { JsonStore } from '../lib/store.js';
+import { join } from 'node:path';
 import { Hub } from './hub.js';
+import { tailJsonl } from '../lib/tail.js';
+
+// საიდუმლოები ადმინშიც არ ჩანს
+const SECRET_KEYS = /key|secret|password|token/i;
+const publicCfg = cfg => Object.fromEntries(Object.entries(cfg).map(([k, v]) => [k, SECRET_KEYS.test(k) ? '••••' : v]));
 
 export async function startIntegrationsService({ port = 0, host = '127.0.0.1', dataDir, key, platforms = [], publicUrl = '' }) {
   if (!key) throw new Error('INTERNAL_KEY აუცილებელია');
@@ -22,7 +29,21 @@ export async function startIntegrationsService({ port = 0, host = '127.0.0.1', d
     ['GET', '/platforms', () => [...hub.platforms.values()].map(({ cfg }) => ({ id: cfg.id, adapter: cfg.adapter }))],
     ['GET', '/sessions/:token', ({ params }) => hub.session(params.token)],
     ['GET', '/sessions/:token/balance', ({ params }) => hub.balance(params.token)],
-    ['POST', '/sessions/:token/tx', ({ params, body }) => hub.transact(params.token, body)]
+    ['POST', '/sessions/:token/tx', ({ params, body }) => hub.transact(params.token, body)],
+    ['GET', '/admin/overview', ({ query }) => {
+      const sessions = Object.values(hub.sessions);
+      const journal = tailJsonl(join(dataDir, 'journal.jsonl'), Math.min(1000, Number(query.get('limit')) || 150));
+      return {
+        platforms: [...hub.platforms.values()].map(({ cfg }) => ({
+          ...publicCfg(cfg),
+          sessions: sessions.filter(s => s.platform === cfg.id).length,
+          players: new Set(sessions.filter(s => s.platform === cfg.id).map(s => s.playerId)).size,
+          lastLaunchAt: sessions.filter(s => s.platform === cfg.id).map(s => s.createdAt).sort().at(-1) || null
+        })),
+        freebets: Object.values(hub.freebets).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+        journal
+      };
+    }]
   ], { key });
 
   // პლატფორმის მარშრუტები: თითოეული ადაპტერის routes, პრეფიქსით /p/:platform

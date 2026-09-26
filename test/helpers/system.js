@@ -33,9 +33,9 @@ function spawnProc(entry, env, pattern) {
   return { child, match, output: () => out };
 }
 
-export async function startSystem({ betMs = 700, endMs = 250, speed = 20, dataDir } = {}) {
+export async function startSystem({ betMs = 700, endMs = 250, speed = 20, dataDir, env = {} } = {}) {
   dataDir ||= mkdtempSync(join(tmpdir(), 'gr-test-'));
-  const game = { CHAIN_SECRET: TEST_SECRET, CLIENT_SEED, CHAIN_LENGTH: String(CHAIN_LENGTH), BET_MS: String(betMs), END_MS: String(endMs), SPEED: String(speed) };
+  const game = { CHAIN_SECRET: TEST_SECRET, CLIENT_SEED, CHAIN_LENGTH: String(CHAIN_LENGTH), BET_MS: String(betMs), END_MS: String(endMs), SPEED: String(speed), ...env };
   const procs = [];
   let port;
   if (MODE === 'separate') {
@@ -47,7 +47,7 @@ export async function startSystem({ betMs = 700, endMs = 250, speed = 20, dataDi
     const b = spawnProc(svc('bets'), { INTERNAL_KEY, ROUND_URL: roundUrl, BETS_PORT: '0', DATA_DIR: join(dataDir, 'bets') }, /bets-service → (\S+)/);
     procs.push(b);
     const betsUrl = (await b.match)[1];
-    const g = spawnProc(svc('gateway'), { INTERNAL_KEY, ROUND_URL: roundUrl, BETS_URL: betsUrl, PORT: '0' }, /Gravel Rush → http:\/\/localhost:(\d+)/);
+    const g = spawnProc(svc('gateway'), { INTERNAL_KEY, ROUND_URL: roundUrl, BETS_URL: betsUrl, PORT: '0', ...env }, /Gravel Rush → http:\/\/localhost:(\d+)/);
     procs.push(g);
     port = Number((await g.match)[1]);
   } else {

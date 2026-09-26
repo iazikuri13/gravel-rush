@@ -7,11 +7,12 @@ import { join, normalize, extname } from 'node:path';
 import { WebSocketServer } from 'ws';
 import { subscribe, apiClient, HttpError } from '../lib/http.js';
 import { RULES } from '../lib/rules.js';
+import { createAdmin } from './admin.js';
 import { G, MAX_CRASH_100 } from '../../public/shared/math.js';
 
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
 
-export async function startGateway({ port = 3000, host, publicDir, key, roundUrl, betsUrl, allowedOrigins = [], proxies = [] }) {
+export async function startGateway({ port = 3000, host, publicDir, key, roundUrl, betsUrl, allowedOrigins = [], proxies = [], integrationsUrl = null, adminPassword = null }) {
   const round = apiClient(roundUrl, key);
   const bets = apiClient(betsUrl, key);
 
@@ -37,6 +38,8 @@ export async function startGateway({ port = 3000, host, publicDir, key, roundUrl
   const http = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
     if (url.pathname === '/healthz') { res.writeHead(200); return res.end('ok'); }
+    if (url.pathname.startsWith('/admin/api/')) return admin(req, res, url);
+    if (url.pathname === '/admin') { res.writeHead(301, { location: '/admin/' }); return res.end(); }
     const px = proxies.find(p => url.pathname.startsWith(p.prefix) || url.pathname + '/' === p.prefix);
     if (px) {
       if (url.pathname + '/' === px.prefix) { res.writeHead(301, { location: px.prefix + url.search }); return res.end(); }
@@ -46,12 +49,13 @@ export async function startGateway({ port = 3000, host, publicDir, key, roundUrl
       res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
       return res.end(JSON.stringify({ ...fairness, history }));
     }
-    const rel = normalize(decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname)).replace(/^([\\/]\.\.)+/, '');
+    const rel = normalize(decodeURIComponent(url.pathname.endsWith('/') ? url.pathname + 'index.html' : url.pathname)).replace(/^([\\/]\.\.)+/, '');
     const file = join(publicDir, rel);
     if (!file.startsWith(publicDir)) { res.writeHead(403); return res.end(); }
     try {
       const body = await readFile(file);
-      res.writeHead(200, { 'content-type': TYPES[extname(file)] || 'application/octet-stream', 'cache-control': 'no-cache' });
+      const extra = rel.startsWith('/admin') || rel.startsWith('\\admin') ? { 'x-frame-options': 'DENY', 'referrer-policy': 'no-referrer' } : {};
+      res.writeHead(200, { 'content-type': TYPES[extname(file)] || 'application/octet-stream', 'cache-control': 'no-cache', ...extra });
       res.end(body);
     } catch {
       res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
@@ -68,6 +72,11 @@ export async function startGateway({ port = 3000, host, publicDir, key, roundUrl
       return o.host === req.headers.host || o.hostname === 'localhost' || allowedOrigins.includes(o.origin);
     } catch { return false; }
   };
+  const admin = createAdmin({
+    password: adminPassword, round, bets,
+    integrations: integrationsUrl ? apiClient(integrationsUrl, key) : null,
+    online: () => wss.clients.size
+  });
   const wss = new WebSocketServer({ server: http, maxPayload: 4096, verifyClient: originOk });
   const socketsByToken = new Map();
 

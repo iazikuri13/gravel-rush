@@ -13,3 +13,6 @@ services:
       # Lovable-ის ფრონტენდის დომენი, როცა გადავიტანთ (მძიმით გამოყოფილი)
       - key: ALLOWED_ORIGINS
         sync: false
+      # ადმინის პაროლი (/admin). Render თავად ქმნის; ნახვა/შეცვლა: Dashboard → Environment
+      - key: ADMIN_PASSWORD
+        generateValue: true

@@ -13,6 +13,7 @@
 //
 // დამოკიდებულია რაუნდის სერვისზე: GET /rounds/current, /rounds/accepting, POST /rounds/:n/check, SSE /events
 import { Wallet } from './wallet.js';
+import { adminApi } from './admin.js';
 import { JsonStore } from '../lib/store.js';
 import { router, listen, EventHub, subscribe, apiClient } from '../lib/http.js';
 
@@ -55,7 +56,8 @@ export async function startBetsService({ port = 0, host = '127.0.0.1', dataDir, 
     ['POST', '/bets', ({ body }) => wallet.placeBet(body.token, { car: body.car, amount: body.amount, auto: body.auto ?? null })],
     ['DELETE', '/bets/:token', ({ params }) => wallet.cancelBet(params.token)],
     ['POST', '/bets/:token/cashout', ({ params }) => wallet.cashOut(params.token)],
-    ['GET', '/events', ({ req, res }) => { hub.handle(req, res); }]
+    ['GET', '/events', ({ req, res }) => { hub.handle(req, res); }],
+    ...adminApi(wallet, dataDir).routes
   ], { key });
 
   const { server, port: p, url } = await listen(handler, { port, host });

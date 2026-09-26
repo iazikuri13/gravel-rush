@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="ka">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0a1019">
+<title>Riviera Rush · ადმინი</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Georgian:wdth,wght@62.5..100,400..900&family=Saira+Condensed:wght@500;600;700;800&display=swap">
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+<div class="login" id="login" hidden>
+  <form class="login-card" id="loginForm">
+    <span class="logo"><span>RIVIERA</span><b>RUSH</b></span>
+    <h1>ადმინი</h1>
+    <label for="pw">პაროლი</label>
+    <input id="pw" type="password" autocomplete="current-password" required>
+    <button type="submit">შესვლა</button>
+    <p class="err" id="loginErr" role="alert"></p>
+  </form>
+</div>
+
+<div class="shell" id="shell" hidden>
+  <aside class="nav">
+    <span class="logo"><span>RIVIERA</span><b>RUSH</b></span>
+    <nav id="tabs" aria-label="განყოფილებები">
+      <button type="button" data-tab="overview" aria-current="page">მიმოხილვა</button>
+      <button type="button" data-tab="rounds">რბოლები</button>
+      <button type="button" data-tab="bets">ფსონები</button>
+      <button type="button" data-tab="players">მოთამაშეები</button>
+      <button type="button" data-tab="integrations">ინტეგრაციები</button>
+      <button type="button" data-tab="system">სისტემა</button>
+    </nav>
+    <div class="nav-foot">
+      <a href="/" target="_blank" rel="noopener">თამაში ↗</a>
+      <a href="/demo-operator/" target="_blank" rel="noopener">სატესტო კაზინო ↗</a>
+      <button type="button" id="logout">გასვლა</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="bar">
+      <h2 id="title">მიმოხილვა</h2>
+      <div class="bar-right">
+        <div class="seg" id="curSeg" role="group" aria-label="ვალუტა"></div>
+        <span class="live" id="live"><i></i><span>განახლდა</span></span>
+        <button type="button" class="ghost" id="refresh">განახლება</button>
+      </div>
+    </header>
+
+    <!-- მიმოხილვა -->
+    <section class="page" data-page="overview">
+      <div class="kpis" id="kpis"></div>
+      <div class="row2">
+        <div class="card chart-card">
+          <div class="card-head"><h3>GGR დღეების მიხედვით</h3><span class="muted" id="chartSub"></span></div>
+          <div class="chart" id="chart" role="img"></div>
+          <details class="table-view"><summary>ცხრილით</summary><div class="tw"><table id="daysTable"></table></div></details>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>ახლა</h3></div>
+          <dl class="now" id="now"></dl>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>ბოლო რბოლები</h3><button type="button" class="link" data-go="rounds">ყველა →</button></div>
+        <div class="round-strip" id="roundStrip"></div>
+      </div>
+    </section>
+
+    <section class="page" data-page="rounds" hidden>
+      <div class="card"><div class="tw"><table id="roundsTable"></table></div></div>
+    </section>
+
+    <section class="page" data-page="bets" hidden>
+      <div class="filters" id="betFilters" role="group" aria-label="ფილტრი">
+        <button type="button" data-type="" aria-pressed="true">ყველა</button>
+        <button type="button" data-type="bet" aria-pressed="false">ფსონი</button>
+        <button type="button" data-type="win" aria-pressed="false">მოგება</button>
+        <button type="button" data-type="lose" aria-pressed="false">წაგება</button>
+        <button type="button" data-type="cancel,refund" aria-pressed="false">დაბრუნება</button>
+        <button type="button" data-type="ext_win,ext_rollback,ext_rejected" aria-pressed="false">კაზინო</button>
+        <button type="button" data-type="refill,admin_adjust,create,create_ext" aria-pressed="false">ანგარიში</button>
+      </div>
+      <div class="card"><div class="tw"><table id="ledgerTable"></table></div></div>
+    </section>
+
+    <section class="page" data-page="players" hidden>
+      <div class="filters">
+        <input type="search" id="playerSearch" placeholder="ძებნა: სახელი, ID, პლატფორმა" aria-label="მოთამაშის ძებნა">
+      </div>
+      <div class="card"><div class="tw"><table id="playersTable"></table></div></div>
+    </section>
+
+    <section class="page" data-page="integrations" hidden>
+      <div class="platforms" id="platforms"></div>
+      <div class="card">
+        <div class="card-head"><h3>კაზინოს რიგი (გასაგზავნი მოგებები და დაბრუნებები)</h3><button type="button" class="ghost" id="flush">გაგზავნა ახლავე</button></div>
+        <div id="outbox"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>ტრანზაქციები პლატფორმებთან</h3></div>
+        <div class="tw"><table id="journalTable"></table></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>ფრიბეტები</h3></div>
+        <div class="tw"><table id="freebetsTable"></table></div>
+      </div>
+    </section>
+
+    <section class="page" data-page="system" hidden>
+      <div class="card"><dl class="kv" id="sys"></dl></div>
+    </section>
+  </main>
+</div>
+
+<dialog id="balDialog">
+  <form method="dialog" id="balForm">
+    <h3>ბალანსის შეცვლა</h3>
+    <p class="muted" id="balWho"></p>
+    <label for="balInput">ახალი ბალანსი (DEMO)</label>
+    <input id="balInput" type="number" min="0" max="1000000" step="0.01" inputmode="decimal" required>
+    <p class="err" id="balErr" role="alert"></p>
+    <div class="dlg-actions">
+      <button type="button" class="ghost" id="balCancel">გაუქმება</button>
+      <button type="submit" id="balSave">შენახვა</button>
+    </div>
+  </form>
+</dialog>
+<div class="tip" id="tip" hidden></div>
+<script src="admin.js"></script>
+</body>
+</html>

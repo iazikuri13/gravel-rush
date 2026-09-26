@@ -114,7 +114,7 @@ describe('ფსონები', () => {
     const r = await a.request({ t: 'bet', car: 1, amount: 2500, auto: 300 });
     assert.equal(r.t, 'me');
     assert.equal(r.balance, START_BALANCE - 2500);
-    assert.deepEqual(r.bet, { car: 1, amount: 2500, auto: 300, state: 'open', m100: 0, win: 0 });
+    assert.deepEqual(r.bet, { round: s.round, car: 1, amount: 2500, auto: 300, state: 'open', m100: 0, win: 0 });
 
     const seen = await b.waitFor(m => m.t === 'snap' && m.round === s.round && m.bets.some(x => x.name === 'მოთამაშე-ა'));
     const pub = seen.bets.find(x => x.name === 'მოთამაშე-ა');
@@ -154,6 +154,24 @@ describe('ფსონები', () => {
     await a.raceStart(s.round);
     assert.equal((await a.request({ t: 'bet', car: 0, amount: 100 })).t, 'err');
     assert.equal((await a.request({ t: 'cancel' })).t, 'err');
+  });
+
+  it('წინა რბოლის ფსონი ახალ რბოლაზე აღარ ჩანს და ახალი ფსონი იდება', async () => {
+    // რეგრესია: რბოლის შემდეგ კლიენტს ძველი me.bet რჩებოდა, ღილაკი „გაუქმებაზე“ იჭედებოდა
+    const s = await a.freshBetPhase();
+    assert.equal((await a.request({ t: 'bet', car: 2, amount: 300 })).t, 'me');
+    await a.waitFor(m => m.t === 'me' && m.bet && m.bet.round === s.round && m.bet.state !== 'open');
+    const from = a.mark();
+    const next = await a.freshBetPhase();
+    const fresh = await a.waitFor(m => m.t === 'me' && m.bet === null, { from });
+    assert.equal(fresh.bet, null);
+    assert.equal(a.lastMe().bet, null, 'ახალი რბოლის დაწყებისას me.bet უნდა გასუფთავდეს');
+    const cancel = await a.request({ t: 'cancel' });
+    assert.equal(cancel.t, 'err');
+    const r = await a.request({ t: 'bet', car: 0, amount: 200 });
+    assert.equal(r.t, 'me');
+    assert.equal(r.bet.round, next.round);
+    assert.equal((await a.request({ t: 'cancel' })).t, 'me');
   });
 
   it('token არასდროს ჩანს საჯარო შეტყობინებებში', async () => {

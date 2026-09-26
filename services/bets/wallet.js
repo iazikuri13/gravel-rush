@@ -47,7 +47,7 @@ export class Wallet extends EventEmitter {
     switch (type) {
       case 'bet_open':
         this.#clearTimers();
-        this.bets.clear(); this.ended.clear();
+        this.#newRound();
         this.#changed();
         break;
       case 'race_started':
@@ -68,10 +68,18 @@ export class Wallet extends EventEmitter {
 
   /** რაუნდის მდგომარეობის სინქრონიზაცია (გაშვებისას / SSE-ის ხელახალი დაკავშირებისას) */
   syncState(state) {
-    if (this.state && state.round !== this.state.round) { this.bets.clear(); this.ended.clear(); this.#clearTimers(); }
+    if (this.state && state.round !== this.state.round) { this.#clearTimers(); this.#newRound(); }
     this.state = state;
     state.cars.forEach((c, i) => { if (c.ended) this.ended.set(i, { crash100: c.crash100, type: c.type }); });
     for (const b of this.bets.values()) this.#settleIfEnded(b);
+  }
+
+  // წინა რაუნდის ფსონები ქრება; მათ მფლობელებს ვუგზავნით განახლებულ me-ს (bet: null),
+  // რომ კლიენტს ძველი ფსონი არ დარჩეს
+  #newRound() {
+    const had = [...this.bets.keys()];
+    this.bets.clear(); this.ended.clear();
+    for (const token of had) if (this.players[token]) this.emit('me_changed', { token, me: this.me(token) });
   }
 
   #clearTimers() { this.timers.forEach(clearTimeout); this.timers = []; }
@@ -218,7 +226,7 @@ export class Wallet extends EventEmitter {
     const b = this.bets.get(token);
     return {
       pid: pl.pid, name: pl.name, balance: pl.balance,
-      bet: b ? { car: b.car, amount: b.amount, auto: b.auto, state: pubState(b), m100: b.m100, win: b.win } : null
+      bet: b ? { round: b.round, car: b.car, amount: b.amount, auto: b.auto, state: pubState(b), m100: b.m100, win: b.win } : null
     };
   }
 

@@ -79,6 +79,8 @@ export async function startGateway({ port = 3000, host, publicDir, key, roundUrl
     } else if (type === 'settled') {
       toToken(data.token, { t: 'result', ...data.result });
       toToken(data.token, { t: 'me', now: Date.now(), ...data.me });
+    } else if (type === 'me_changed') {
+      toToken(data.token, { t: 'me', now: Date.now(), ...data.me });
     }
   });
   await Promise.all([roundSub.opened, betsSub.opened]);

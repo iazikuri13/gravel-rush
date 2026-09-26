@@ -9,7 +9,7 @@
 //  POST   /bets                          {token, car, amount, auto?} → me
 //  DELETE /bets/:token                   → me
 //  POST   /bets/:token/cashout           → me
-//  GET    /events                        SSE: bets_changed, settled
+//  GET    /events                        SSE: bets_changed, settled, me_changed
 //
 // დამოკიდებულია რაუნდის სერვისზე: GET /rounds/current, /rounds/accepting, POST /rounds/:n/check, SSE /events
 import { Wallet } from './wallet.js';
@@ -28,6 +28,7 @@ export async function startBetsService({ port = 0, host = '127.0.0.1', dataDir, 
   const hub = new EventHub();
   wallet.on('bets_changed', d => hub.emit('bets_changed', d));
   wallet.on('settled', d => hub.emit('settled', d));
+  wallet.on('me_changed', d => hub.emit('me_changed', d));
 
   const sub = subscribe(roundUrl + '/events', key, (type, data) => wallet.onRoundEvent(type, data), {
     onOpen: () => roundApi.get('/rounds/current').then(s => wallet.syncState(s)).catch(() => {})

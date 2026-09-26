@@ -126,6 +126,8 @@ const cx = d => W / 2 + amp * Math.sin(d * .0021) + amp * .6 * Math.sin(d * .005
 const sy = d => baseY - (d - S.cam) + shakeY;
 const laneX = (i, d) => cx(d) + (i - 1) * laneGap;
 const slope = d => (cx(d + 2) - cx(d - 2)) / 4;
+// ჩემი ფსონი მხოლოდ მაშინ, თუ ეკრანზე მიმდინარე რბოლას ეკუთვნის
+const myBet = () => { const b = S.me?.bet; return b && b.round === S.round ? b : null; };
 const raceT = () => Math.max(0, (serverNow() - S.raceStart) / 1000);
 const visD = (c, now) => c.d + LEADS[c.i] * Sc + (!c.ended && S.phase === 'race' ? Math.sin(now / 1000 * 1.7 + c.i * 2.1) * 6 * Sc : 0);
 const carX = (c, d) => laneX(c.i, d) + c.drift;
@@ -147,7 +149,7 @@ function endCarLocal(c, sc) {
     c.rock = { d: rd, x: laneX(c.i, rd), i: c.i, kind: Math.random() < .55 ? 'tires' : 'cones', seed: Math.random() * 100 };
     rocks.push(c.rock);
     burst(c, vd);
-    S.shake = Math.max(S.shake, S.me?.bet?.car === c.i ? 12 : 5);
+    S.shake = Math.max(S.shake, myBet()?.car === c.i ? 12 : 5);
   } else {
     c.driftTo = (c.i === 0 ? -1 : c.i === 2 ? 1 : (Math.random() < .5 ? -1 : 1)) * laneGap * .42;
   }
@@ -445,8 +447,8 @@ function draw(now) {
   }
   for (const r of rocks) drawObstacle(r);
   drawParts(false);
-  const myBet = S.me?.bet;
-  const mine = myBet ? myBet.car : (S.phase === 'bet' ? S.sel : -1);
+  const myB = myBet();
+  const mine = myB ? myB.car : (S.phase === 'bet' ? S.sel : -1);
   const pos = S.cars.map(c => {
     const d = visD(c, now);
     return { c, d, x: carX(c, d), y: sy(d) + (S.phase === 'bet' ? Math.sin(now / 25 + c.i) * .5 : 0) };
@@ -462,8 +464,8 @@ function draw(now) {
     if (p.y < -40 || p.y > H + 40) continue;
     const ly = p.y - L * .5 - 16 * Sc, c = p.c;
     if (c.ended) pill(`${c.type === 'crash' ? 'დაეჯახა' : 'გაჩერდა'} ×${x100(c.crash100)}`, p.x, ly, c.type === 'crash' ? '#ff6a55' : '#d2ad73', '#1a0f08');
-    else if (myBet && myBet.car === c.i && myBet.state === 'won') pill(`+${fmt(myBet.win)}`, p.x, ly, '#4fd67a', '#062010');
-    else if (c.i === mine) pill(myBet ? 'შენ' : 'არჩეული', p.x, ly, 'rgba(12,18,14,.85)', '#fff8ea');
+    else if (myB && myB.car === c.i && myB.state === 'won') pill(`+${fmt(myB.win)}`, p.x, ly, '#4fd67a', '#062010');
+    else if (c.i === mine) pill(myB ? 'შენ' : 'არჩეული', p.x, ly, 'rgba(12,18,14,.85)', '#fff8ea');
   }
   ctx.restore();
   const g = ctx.createLinearGradient(0, 0, 0, H);
@@ -506,7 +508,7 @@ let actKey = '';
 const readAmt = () => { const v = parseFloat($('#amt').value); return isFinite(v) ? Math.max(0, v) : 0; };
 function updateAction(force) {
   let cls, main, sub, dis = false;
-  const b = S.me?.bet;
+  const b = myBet();
   if (!S.me || S.phase === 'connecting' || S.phase === 'halted') {
     cls = 'wait'; dis = true; main = S.phase === 'halted' ? 'თამაში შეჩერებულია' : 'კავშირი…'; sub = '';
   } else if (S.phase === 'bet') {
@@ -529,7 +531,7 @@ function updateAction(force) {
   actBtn.firstChild.textContent = main; actBtn.lastChild.textContent = sub;
 }
 function act() {
-  const b = S.me?.bet;
+  const b = myBet();
   if (S.phase === 'bet') {
     if (b) return send({ t: 'cancel' });
     const amount = Math.round(readAmt() * 100);
@@ -565,9 +567,9 @@ function drawMinis() {
 const carsEl = $('#cars');
 carsEl.innerHTML = CARS.map((c, i) => `<button class="car-card" type="button" id="car${i}" data-i="${i}" style="--c:${c.color}" aria-pressed="false">${mini(i)}<div class="cc-body"><div class="cc-name">${c.name}<span class="cc-num">#${c.num}</span></div><div class="cc-status" id="st${i}"></div></div><div class="cc-bets"><b id="cb${i}">0</b><small>ფსონი</small></div></button>`).join('');
 carsEl.addEventListener('click', e => { const b = e.target.closest('.car-card'); if (b) pick(+b.dataset.i); });
-function pick(i) { if (S.phase === 'bet' && !S.me?.bet) { S.sel = i; renderCards(); updateAction(true); } }
+function pick(i) { if (S.phase === 'bet' && !myBet()) { S.sel = i; renderCards(); updateAction(true); } }
 function renderCards() {
-  const b = S.me?.bet;
+  const b = myBet();
   CARS.forEach((c, i) => {
     const car = S.cars[i], btn = $('#car' + i), st = $('#st' + i);
     btn.setAttribute('aria-pressed', String(b ? b.car === i : S.sel === i));
@@ -659,13 +661,13 @@ document.addEventListener('keydown', e => {
 /* ---------- 3D ---------- */
 function labels3(now) {
   ctx.clearRect(0, 0, W, H);
-  const myBet = S.me?.bet, mine = myBet ? myBet.car : (S.phase === 'bet' ? S.sel : -1);
+  const myB = myBet(), mine = myB ? myB.car : (S.phase === 'bet' ? S.sel : -1);
   for (const c of S.cars) {
     const p = G3.project(c, now); if (!p || p.y < -20 || p.y > H + 20) continue;
     const ly = p.y - 12 * Sc;
     if (c.ended) pill(`${c.type === 'crash' ? 'დაეჯახა' : 'გაჩერდა'} ×${x100(c.crash100)}`, p.x, ly, c.type === 'crash' ? '#ff5d52' : '#e3bd72', '#1a0f08');
-    else if (myBet && myBet.car === c.i && myBet.state === 'won') pill(`+${fmt(myBet.win)}`, p.x, ly, '#4fd67a', '#062010');
-    else if (c.i === mine) pill(myBet ? 'შენ' : 'არჩეული', p.x, ly, 'rgba(10,15,24,.86)', '#fff8ea');
+    else if (myB && myB.car === c.i && myB.state === 'won') pill(`+${fmt(myB.win)}`, p.x, ly, '#4fd67a', '#062010');
+    else if (c.i === mine) pill(myB ? 'შენ' : 'არჩეული', p.x, ly, 'rgba(10,15,24,.86)', '#fff8ea');
   }
 }
 function start3D() {
@@ -673,7 +675,7 @@ function start3D() {
     G3 = createScene3D({
       canvas: $('#gl'), S, parts, rocks, CARS, visD, cx, REDUCE,
       dims: () => ({ W, H, Sc, laneGap }),
-      mine: () => S.me?.bet ? S.me.bet.car : (S.phase === 'bet' ? S.sel : -1),
+      mine: () => myBet() ? myBet().car : (S.phase === 'bet' ? S.sel : -1),
       betRemaining: () => S.rules.betMs - (serverNow() - S.phaseStart)
     });
   } catch (e) { console.error(e); G3 = null; }

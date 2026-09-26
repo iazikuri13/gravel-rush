@@ -197,6 +197,19 @@ describe('ფსონების სერვისი (ყალბი რა
     assert.equal((await api.get(`/players/${token}`)).bet, null);
   });
 
+  it('ახალი რაუნდი ფსონის მქონე მოთამაშეს უგზავნის განახლებულ me-ს (bet: null)', async () => {
+    const { token } = await api.post('/players', { name: 'ნინო' });
+    const me = await api.post('/bets', { token, car: 1, amount: 500 });
+    assert.equal(me.bet.round, 1);
+    round.race(); round.carEnded(1, 100); round.end();
+    await until(() => settled(token).length === 1);
+    round.newRound(2);
+    await until(() => events.some(e => e.event === 'me_changed' && e.token === token));
+    const ev = events.find(e => e.event === 'me_changed' && e.token === token);
+    assert.equal(ev.me.bet, null);
+    assert.equal(ev.me.balance, 100000 - 500);
+  });
+
   it('ავარია რბოლის შუაში: გადატვირთვისას ღია ფსონი ბრუნდება', async () => {
     const { token } = await api.post('/players', {});
     await api.post('/bets', { token, car: 0, amount: 4000 });

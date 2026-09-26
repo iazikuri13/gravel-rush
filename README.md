@@ -107,7 +107,7 @@ INTERNAL_KEY=საიდუმლო ROUND_URL=http://127.0.0.1:4101 BETS_URL=h
 | POST | `/bets` | `{token, car, amount, auto?}` → `me` |
 | DELETE | `/bets/:token` | გაუქმება |
 | POST | `/bets/:token/cashout` | ქეშაუთი (round-ის დადასტურებით) |
-| GET | `/events` | SSE: `bets_changed`, `settled` |
+| GET | `/events` | SSE: `bets_changed`, `settled`, `me_changed` (ახალი რაუნდისას ფსონის მქონე მოთამაშეს) |
 
 round-ისა და bets-ის ყველა მარშრუტი (`/health`-ის გარდა) მოითხოვს `x-internal-key` სათაურს. `npm start`-ისას ეს ორი სერვისი მხოლოდ `127.0.0.1`-ზე უსმენს.
 

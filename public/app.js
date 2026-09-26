@@ -568,6 +568,29 @@ const carsEl = $('#cars');
 carsEl.innerHTML = CARS.map((c, i) => `<button class="car-card" type="button" id="car${i}" data-i="${i}" style="--c:${c.color}" aria-pressed="false">${mini(i)}<div class="cc-body"><div class="cc-name">${c.name}<span class="cc-num">#${c.num}</span></div><div class="cc-status" id="st${i}"></div></div><div class="cc-bets"><b id="cb${i}">0</b><small>ფსონი</small></div></button>`).join('');
 carsEl.addEventListener('click', e => { const b = e.target.closest('.car-card'); if (b) pick(+b.dataset.i); });
 function pick(i) { if (S.phase === 'bet' && !myBet()) { S.sel = i; renderCards(); updateAction(true); } }
+// ბოლიდის არჩევა ტრასაზე მასზე დაჭერით
+function carAt(x, y) {
+  const now = performance.now();
+  if (G3) return G3.pick(x, y, now);
+  let best = -1, bd = (L * .9) ** 2;
+  for (const c of S.cars) {
+    const d = visD(c, now), dx = carX(c, d) - x, dy = sy(d) - y, q = dx * dx + dy * dy;
+    if (q < bd) { bd = q; best = c.i; }
+  }
+  return best;
+}
+const stageEl = $('#stage');
+const stagePoint = e => { const r = stageEl.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+stageEl.addEventListener('click', e => {
+  if (S.phase !== 'bet' || myBet()) return;
+  const i = carAt(...stagePoint(e));
+  if (i >= 0) pick(i);
+});
+stageEl.addEventListener('pointermove', e => {
+  if (e.pointerType !== 'mouse') return;
+  const can = S.phase === 'bet' && !myBet() && carAt(...stagePoint(e)) >= 0;
+  stageEl.style.cursor = can ? 'pointer' : '';
+});
 function renderCards() {
   const b = myBet();
   CARS.forEach((c, i) => {

@@ -748,5 +748,25 @@ export function createScene3D(api) {
     if (tmp.z > 1) return null;
     return {x: (tmp.x + 1) / 2 * W, y: (1 - tmp.y) / 2 * H};
   }
-  return {render, resize: resize3, project};
+  // ეკრანის წერტილში (CSS px) რომელი ბოლიდია: ჯერ სხივით მოდელზე, მერე უახლოეს ცენტრზე
+  const ray = new T.Raycaster(), ndc = new T.Vector2();
+  function pick(x, y, now) {
+    ({W, H, Sc, laneGap} = api.dims());
+    ndc.set(x / W * 2 - 1, 1 - y / H * 2);
+    ray.setFromCamera(ndc, cam);
+    for (const h of ray.intersectObjects(car3, true)) {
+      let o = h.object; while (o && !car3.includes(o)) o = o.parent;
+      if (o) return car3.indexOf(o);
+    }
+    let best = -1, bd = Math.max(40, 60 * Sc) ** 2;
+    for (const c of S.cars) {
+      const s = visD(c, now) / U(), l = (c.i - 1) * LG + c.drift * kL();
+      P3(s, l, .6, tmp).project(cam);
+      if (tmp.z > 1) continue;
+      const dx = (tmp.x + 1) / 2 * W - x, dy = (1 - tmp.y) / 2 * H - y, q = dx * dx + dy * dy;
+      if (q < bd) { bd = q; best = c.i; }
+    }
+    return best;
+  }
+  return {render, resize: resize3, project, pick};
 }

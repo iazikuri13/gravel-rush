@@ -2,7 +2,8 @@
 <html lang="ka">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a1019">
 <title>Riviera Rush</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -12,73 +13,80 @@
 <body>
 <div class="app">
   <header class="top">
-    <div class="brand">
-      <span class="logo" aria-label="Riviera Rush"><span>RIVIERA</span><b>RUSH</b></span>
-      <span class="tag">ქუჩის ტრასის ქეშაუთი</span>
+    <span class="logo" aria-label="Riviera Rush"><span>RIVIERA</span><b>RUSH</b></span>
+    <span class="tag">ქუჩის ტრასის ქეშაუთი</span>
+    <div class="status">
+      <div class="conn" id="conn" data-state="connecting"><i></i><span id="connText">კავშირი…</span></div>
+      <span class="online" title="ონლაინ"><strong id="online">0</strong><span class="ol-word"> ონლაინ</span></span>
     </div>
-    <div class="conn" id="conn" data-state="connecting"><i></i><span id="connText">კავშირი…</span></div>
-    <div class="online"><strong id="online">0</strong> ონლაინ</div>
-    <label class="nick">
-      <small>სახელი</small>
-      <input id="nick" maxlength="16" autocomplete="off" spellcheck="false">
-    </label>
     <div class="balance">
-      <div><small>დემო ბალანსი</small><strong id="balance">—</strong></div>
+      <small>ბალანსი</small>
+      <strong id="balance">—</strong>
       <button id="refill" type="button" hidden>შევსება</button>
     </div>
+    <button class="menu-btn" id="menuBtn" type="button" aria-controls="side" aria-expanded="false" aria-label="ფსონები, პროფილი და სამართლიანობა">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <b id="menuCount">0</b>
+    </button>
   </header>
 
   <div class="hist-wrap">
-    <div class="hist-label">ბოლო<br>რბოლები</div>
+    <span class="hist-label">ბოლო რბოლები</span>
     <div class="history" id="history"></div>
   </div>
 
-  <div class="grid">
-    <section class="main">
-      <div class="stage" id="stage">
-        <canvas id="gl" aria-label="ქუჩის ტრასა ნავსადგურთან, სამი ბოლიდით"></canvas>
-        <canvas id="cv" aria-hidden="true"></canvas>
-        <div class="hud">
-          <div class="mult count" id="mult">—</div>
-          <div class="phase" id="phase">სერვერთან დაკავშირება…</div>
-          <div class="bar" id="bar"><i id="barFill"></i></div>
-        </div>
-        <div class="toast" id="toast" hidden></div>
-      </div>
+  <div class="stage" id="stage">
+    <canvas id="gl" aria-label="ქუჩის ტრასა ნავსადგურთან, სამი ბოლიდით"></canvas>
+    <canvas id="cv" aria-hidden="true"></canvas>
+    <div class="hud">
+      <div class="mult count" id="mult">—</div>
+      <div class="phase" id="phase">სერვერთან დაკავშირება…</div>
+      <div class="bar" id="bar"><i id="barFill"></i></div>
+    </div>
+    <div class="toast" id="toast" hidden></div>
+  </div>
 
-      <div class="pick-head">
-        <span class="label">აირჩიე ბოლიდი</span>
-        <span class="hint">სამივეს ერთნაირი შანსი აქვს · <span class="kbd">1</span><span class="kbd">2</span><span class="kbd">3</span></span>
+  <section class="deck" aria-label="ფსონი">
+    <div class="cars" id="cars" role="group" aria-label="აირჩიე ბოლიდი"></div>
+    <div class="betbox">
+      <div class="amt-row">
+        <button class="step" type="button" data-step="-5" aria-label="შემცირება">−</button>
+        <label class="amt-field">
+          <small>ფსონი</small>
+          <input id="amt" type="number" inputmode="decimal" min="1" max="1000" step="1" value="50" aria-label="ფსონის ოდენობა">
+        </label>
+        <button class="step" type="button" data-step="5" aria-label="გაზრდა">+</button>
       </div>
-      <div class="cars" id="cars"></div>
-
-      <div class="betbox">
-        <div class="controls">
-          <span class="label">ფსონი</span>
-          <div class="amt-row">
-            <button class="step" type="button" data-step="-5" aria-label="შემცირება">−</button>
-            <input id="amt" type="number" inputmode="decimal" min="1" max="1000" step="1" value="50" aria-label="ფსონის ოდენობა">
-            <button class="step" type="button" data-step="5" aria-label="გაზრდა">+</button>
-          </div>
-          <div class="chips" id="chips">
-            <button type="button" data-v="10">10</button>
-            <button type="button" data-v="50">50</button>
-            <button type="button" data-v="100">100</button>
-            <button type="button" data-v="250">250</button>
-            <button type="button" data-v="half">½</button>
-            <button type="button" data-v="dbl">2×</button>
-          </div>
-          <div class="auto">
-            <label><input type="checkbox" id="autoOn"> ავტო-ქეშაუთი</label>
-            <input id="autoVal" type="number" min="1.01" max="100" step="0.1" value="2.00" aria-label="ავტო-ქეშაუთის კოეფიციენტი"> ×
-          </div>
-        </div>
-        <button id="action" type="button" class="wait" disabled><span class="a-main">კავშირი…</span><span class="a-sub"></span></button>
+      <div class="chips" id="chips">
+        <button type="button" data-v="10">10</button>
+        <button type="button" data-v="50">50</button>
+        <button type="button" data-v="100">100</button>
+        <button type="button" data-v="250">250</button>
+        <button type="button" data-v="half">½</button>
+        <button type="button" data-v="dbl">2×</button>
       </div>
-    </section>
+      <div class="auto">
+        <label class="switch"><input type="checkbox" id="autoOn"><span></span>ავტო-ქეშაუთი</label>
+        <span class="auto-val"><input id="autoVal" type="number" inputmode="decimal" min="1.01" max="100" step="0.1" value="2.00" aria-label="ავტო-ქეშაუთის კოეფიციენტი">×</span>
+      </div>
+      <button id="action" type="button" class="wait" disabled><span class="a-main">კავშირი…</span><span class="a-sub"></span></button>
+    </div>
+  </section>
 
-    <aside class="side">
-      <div class="feed">
+  <aside class="side" id="side" aria-label="ფსონები, პროფილი და სამართლიანობა">
+    <div class="sheet-head">
+      <span class="sheet-grip" aria-hidden="true"></span>
+      <button class="sheet-close" id="sheetClose" type="button" aria-label="დახურვა">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="side-body">
+      <label class="nick panel">
+        <small>შენი სახელი</small>
+        <input id="nick" maxlength="16" autocomplete="off" spellcheck="false">
+      </label>
+
+      <div class="feed panel">
         <div class="feed-head">
           <span class="label">ფსონები ამ რბოლაზე</span>
           <span class="sum" id="feedSum"></span>
@@ -86,7 +94,7 @@
         <ul id="feed"></ul>
       </div>
 
-      <details class="fair" id="fair">
+      <details class="fair panel" id="fair">
         <summary><span class="label">სამართლიანობის შემოწმება</span><span class="fair-badge">provably fair</span></summary>
         <div class="fair-body">
           <p class="fair-note">ყველა შედეგი წინასწარაა დაფიქსირებული ჰეშ-ჯაჭვით. რაუნდის შემდეგ სერვერი ამჟღავნებს seed-ს — შეამოწმე, რომ ის ჯაჭვს ეკუთვნის და შედეგები მისგან გამოდის.</p>
@@ -105,17 +113,19 @@
           <div class="fair-out" id="vOut" aria-live="polite"></div>
         </div>
       </details>
-    </aside>
-  </div>
 
-  <footer class="foot">
-    <ol class="how">
-      <li>აირჩიე ბოლიდი სტარტამდე: დააჭირე მას ტრასაზე</li>
-      <li>დადე ფსონი</li>
-      <li>აიღე მოგება, სანამ შენი ბოლიდი დაეჯახება ან გაჩერდება</li>
-    </ol>
-    <span>დემო: ვირტუალური კრედიტები. RTP 97%. <span class="kbd">Space</span> — ფსონი / ქეშაუთი</span>
-  </footer>
+      <div class="how panel">
+        <span class="label">როგორ ვითამაშო</span>
+        <ol>
+          <li>აირჩიე ბოლიდი სტარტამდე: დააჭირე მას ტრასაზე ან ბარათს</li>
+          <li>დადე ფსონი</li>
+          <li>აიღე მოგება, სანამ შენი ბოლიდი დაეჯახება ან გაჩერდება</li>
+        </ol>
+        <p>დემო: ვირტუალური კრედიტები. RTP 97%. <span class="kbd">Space</span> — ფსონი / ქეშაუთი, <span class="kbd">1</span><span class="kbd">2</span><span class="kbd">3</span> — ბოლიდი</p>
+      </div>
+    </div>
+  </aside>
+  <div class="scrim" id="scrim" hidden></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
 <script type="module" src="app.js"></script>

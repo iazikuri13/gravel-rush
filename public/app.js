@@ -610,6 +610,7 @@ function renderFeed() {
   const rows = S.bets.slice().sort((a, b) => (b.pid === myPid) - (a.pid === myPid) || b.amount - a.amount);
   const total = rows.reduce((s, r) => s + r.amount, 0);
   $('#feedSum').innerHTML = `${fmt(total)} <small>· ${rows.length} მოთამაშე</small>`;
+  $('#menuCount').textContent = String(rows.length);
   const ul = $('#feed');
   if (!rows.length) { ul.innerHTML = '<li class="feed-empty">ამ რბოლაზე ფსონი ჯერ არავის დაუდია.</li>'; return; }
   ul.innerHTML = rows.map(r => {
@@ -628,6 +629,7 @@ $('#history').addEventListener('click', e => {
   const b = e.target.closest('.h-round'); if (!b) return;
   const item = S.history.find(h => h.round === +b.dataset.round); if (!item) return;
   $('#vRound').value = item.round; $('#vSeed').value = item.seed;
+  openSheet();
   $('#fair').open = true;
   $('#fair').scrollIntoView({ behavior: REDUCE ? 'auto' : 'smooth', block: 'nearest' });
   runVerify();
@@ -655,6 +657,24 @@ async function runVerify() {
     out.innerHTML = lines.join('<br>');
   } finally { verifying = false; }
 }
+
+/* ---------- გვერდითი პანელი (მობილურზე — ქვედა ფურცელი) ---------- */
+const side = $('#side'), scrim = $('#scrim'), menuBtn = $('#menuBtn');
+function openSheet() {
+  if (getComputedStyle(menuBtn).display === 'none') return;
+  side.classList.add('open'); scrim.hidden = false; menuBtn.setAttribute('aria-expanded', 'true');
+}
+function closeSheet() {
+  side.classList.remove('open'); scrim.hidden = true; menuBtn.setAttribute('aria-expanded', 'false');
+  if (side.contains(document.activeElement)) document.activeElement.blur();
+}
+menuBtn.addEventListener('click', () => (side.classList.contains('open') ? closeSheet() : openSheet()));
+scrim.addEventListener('click', closeSheet);
+$('#sheetClose').addEventListener('click', closeSheet);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && side.classList.contains('open')) closeSheet(); });
+let sheetY = null;
+side.addEventListener('touchstart', e => { sheetY = side.querySelector('.side-body').scrollTop <= 0 ? e.touches[0].clientY : null; }, { passive: true });
+side.addEventListener('touchmove', e => { if (sheetY !== null && e.touches[0].clientY - sheetY > 70) { sheetY = null; closeSheet(); } }, { passive: true });
 
 /* ---------- შეყვანა ---------- */
 actBtn.addEventListener('click', act);

@@ -8,6 +8,7 @@ const svc = await startBetsService({
   host: env.HOST || '127.0.0.1',
   dataDir: env.DATA_DIR || './data/bets',
   key: env.INTERNAL_KEY,
-  roundUrl: env.ROUND_URL || 'http://127.0.0.1:4101'
+  roundUrl: env.ROUND_URL || 'http://127.0.0.1:4101',
+  integrationsUrl: env.INTEGRATIONS_URL || null
 });
 console.log(`bets-service → ${svc.url}`);

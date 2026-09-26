@@ -19,6 +19,8 @@ const store = {
   set: (k, v) => { try { localStorage.setItem(k, v); } catch {} }
 };
 
+// კაზინოდან გაშვებისას ბმულს აქვს ?session=… — ბალანსი და ფული კაზინოს მხარესაა
+const SESSION = new URLSearchParams(location.search).get('session');
 const S = {
   phase: 'connecting', round: 0, roundHash: '', phaseStart: 0, raceStart: 0,
   cars: [], bets: [], me: null, sel: 0, history: [], online: 0,
@@ -45,7 +47,7 @@ function connect() {
   ws.onopen = () => {
     retry = 800;
     setConn('open', 'ონლაინ');
-    send({ t: 'hello', token: store.get('gr_token'), name: store.get('gr_name') });
+    send(SESSION ? { t: 'hello', session: SESSION } : { t: 'hello', token: store.get('gr_token'), name: store.get('gr_name') });
     clearInterval(pingTimer);
     const ping = () => { const id = Math.random(); pings.set(id, Date.now()); send({ t: 'ping', id }); };
     ping(); pingTimer = setInterval(ping, 5000);
@@ -64,7 +66,7 @@ function setConn(state, text) { $('#conn').dataset.state = state; $('#connText')
 function onMessage(m) {
   switch (m.t) {
     case 'welcome':
-      store.set('gr_token', m.token);
+      if (!SESSION) store.set('gr_token', m.token);
       S.rules = m.rules; S.commit = m.commit; S.clientSeed = m.clientSeed;
       $('#fCommit').textContent = m.commit; $('#fClient').textContent = m.clientSeed;
       break;
@@ -77,7 +79,7 @@ function onMessage(m) {
     case 'me':
       S.me = m;
       if (document.activeElement !== $('#nick')) $('#nick').value = m.name;
-      store.set('gr_name', m.name);
+      if (!SESSION) store.set('gr_name', m.name);
       updateBal(); feedDirty = true; renderCards(); updateAction(true);
       break;
     case 'result':
@@ -552,8 +554,9 @@ function toast(msg, kind) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, 2600);
 }
 function updateBal() {
-  $('#balance').textContent = S.me ? fmt(S.me.balance) : '—';
-  $('#refill').hidden = !S.me || S.me.balance >= 1000;
+  const cur = S.me?.currency;
+  $('#balance').innerHTML = S.me ? `${fmt(S.me.balance)}${cur ? ` <em class="cur">${esc(cur)}</em>` : ''}` : '—';
+  $('#refill').hidden = !S.me || !!cur || S.me.balance >= 1000;
 }
 
 const mini = i => `<canvas class="mini" id="mini${i}" aria-hidden="true"></canvas>`;

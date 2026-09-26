@@ -2,17 +2,20 @@
   "name": "gravel-rush",
   "version": "0.1.0",
   "private": true,
-  "description": "Rally crash game — server-authoritative, provably fair, multiplayer (demo credits)",
+  "description": "Street-circuit crash game — server-authoritative, provably fair, multiplayer, with a casino integrations hub",
   "type": "module",
   "scripts": {
     "start": "node server/index.js",
-    "test": "node --test test/*.test.js test/services/*.test.js",
+    "test": "node --test test/*.test.js test/services/*.test.js test/integrations/*.test.js",
     "test:contract": "node --test test/contract.test.js",
     "test:separate": "node test/run-separate.js",
     "start:round": "node services/round/main.js",
     "start:bets": "node services/bets/main.js",
     "start:gateway": "node services/gateway/main.js",
-    "simulate": "node scripts/simulate.js"
+    "simulate": "node scripts/simulate.js",
+    "test:integrations": "node --test test/integrations/*.test.js",
+    "start:integrations": "node services/integrations/main.js",
+    "demo:upgaming": "node demo/upgaming-operator/main.js"
   },
   "dependencies": {
     "ws": "^8.18.0"

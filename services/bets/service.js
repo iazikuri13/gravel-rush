@@ -1,7 +1,7 @@
 // ფსონების სერვისი — HTTP API + SSE მოვლენები
 //
 //  GET    /health                        (ღია)
-//  POST   /players                       {token?, name?} → {token, me}
+//  POST   /players                       {token?, name?} → {token, me}   ან {session} — კაზინოდან გაშვებისას
 //  GET    /players/:token                → me
 //  PATCH  /players/:token                {name} → me
 //  POST   /players/:token/refill         → me
@@ -16,14 +16,23 @@ import { Wallet } from './wallet.js';
 import { JsonStore } from '../lib/store.js';
 import { router, listen, EventHub, subscribe, apiClient } from '../lib/http.js';
 
-export async function startBetsService({ port = 0, host = '127.0.0.1', dataDir, key, roundUrl }) {
+export async function startBetsService({ port = 0, host = '127.0.0.1', dataDir, key, roundUrl, integrationsUrl = null }) {
   if (!key) throw new Error('INTERNAL_KEY აუცილებელია');
   if (!roundUrl) throw new Error('ROUND_URL აუცილებელია');
   const roundApi = apiClient(roundUrl, key);
+  // შუამავალი (გარე კაზინოები) — არასავალდებულო; მის გარეშე მხოლოდ დემო ანგარიშები მუშაობს
+  const ext = integrationsUrl ? (() => {
+    const api = apiClient(integrationsUrl, key), enc = encodeURIComponent;
+    return {
+      session: t => api.get(`/sessions/${enc(t)}`),
+      balance: t => api.get(`/sessions/${enc(t)}/balance`),
+      tx: (t, tx) => api.post(`/sessions/${enc(t)}/tx`, tx)
+    };
+  })() : null;
   const wallet = new Wallet(new JsonStore(dataDir), {
     accepting: () => roundApi.get('/rounds/accepting'),
     check: (round, body) => roundApi.post(`/rounds/${round}/check`, body)
-  });
+  }, ext);
 
   const hub = new EventHub();
   wallet.on('bets_changed', d => hub.emit('bets_changed', d));
@@ -52,6 +61,6 @@ export async function startBetsService({ port = 0, host = '127.0.0.1', dataDir, 
   const { server, port: p, url } = await listen(handler, { port, host });
   return {
     url, port: p, wallet,
-    async close() { sub.close(); hub.close(); wallet.dispose(); wallet.store.write('players.json', wallet.players); await new Promise(r => server.close(r)); server.closeAllConnections?.(); }
+    async close() { sub.close(); hub.close(); wallet.dispose(); await wallet.drain().catch(() => {}); wallet.store.write('players.json', wallet.players); await new Promise(r => server.close(r)); server.closeAllConnections?.(); }
   };
 }

@@ -79,11 +79,11 @@ export async function startSystem({ betMs = 700, endMs = 250, speed = 20, dataDi
 
 export class Client {
   static seq = 0;
-  static async connect(sys, { token, name, origin } = {}) {
+  static async connect(sys, { token, name, origin, session } = {}) {
     const ws = new WebSocket(sys.wsUrl, origin ? { origin } : {});
     const c = new Client(ws, sys);
     await once(ws, 'open');
-    c.send({ t: 'hello', token, name });
+    c.send(session ? { t: 'hello', session } : { t: 'hello', token, name });
     c.welcome = await c.waitFor(m => m.t === 'welcome');
     await c.waitFor(m => m.t === 'snap');
     await c.waitFor(m => m.t === 'me');

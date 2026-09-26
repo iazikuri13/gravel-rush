@@ -146,10 +146,58 @@ round-ისა და bets-ის ყველა მარშრუტი (`/h
 | `test/services/round.test.js` | round მარტო: API, ავტორიზაცია, მოვლენების თანმიმდევრობა, check-ის წესები |
 | `test/services/bets.test.js` | bets ყალბი round-ით: ანგარიშსწორება, ერთდროულობა, round-ის გათიშვა, აღდგენა |
 
+## კაზინოების ინტეგრაცია (შუამავალი)
+
+თამაში კაზინოს პლატფორმებთან **შუამავლით** (`services/integrations`) უკავშირდება. კაზინოდან გაშვებული მოთამაშის ფული კაზინოშია: ყოველი ფსონი, მოგება და დაბრუნება კაზინოს API-ს ეგზავნება. დემო ანგარიშები ისე მუშაობს, როგორც ადრე.
+
+```
+კაზინო ──LaunchGame──▶ /p/<პლატფორმა>/…  (gateway → integrations) ──▶ თამაშის ბმული ?session=…
+ბრაუზერი ──WebSocket──▶ gateway ──▶ bets ──▶ integrations ──ადაპტერი──▶ კაზინოს /balance, /transactions
+```
+
+- **ბირთვი** (`hub.js`): სესიები, ტრანზაქციების ჟურნალი (ერთი id ორჯერ არ ტარდება), ფრიბეტები. პლატფორმაზე არაფერი იცის.
+- **ადაპტერი** (`adapters/*.js`): ერთი პლატფორმის პროტოკოლი. ახლა არის `upgaming` („Upgaming Reverse Integration“).
+- **ახალი პლატფორმის დამატება:** იხ. [`services/integrations/adapters/README.md`](services/integrations/adapters/README.md). საჭიროა ერთი ფაილი, ერთი ხაზი რეესტრში და კონფიგურაცია.
+- **ფსონების სერვისი:** მოგება და დაბრუნება რიგით (`outbox.json`) იგზავნება ხელახალი ცდით, ყოველთვის იმავე id-ით. თუ ფსონზე პასუხი არ მოვიდა, უსაფრთხოებისთვის დაბრუნება ემატება რიგში.
+
+### სატესტო კაზინო
+
+`npm start` ავტომატურად უშვებს Upgaming-ის იმიტაციას: **`/demo-operator/`** (მაგ. `http://localhost:3000/demo-operator/`). მასში სამი მოთამაშეა (GEL, USD, EUR), ბალანსი კაზინოს მხარესაა. „თამაშის გაშვება“ სერვერიდან იძახებს ჩვენს `LaunchGame`-ს და თამაშს იმავე გვერდზე ხსნის. ტრანზაქციების ცხრილში ჩანს ყოველი BET / WIN / ROLLBACK. გამორთვა: `DEMO_OPERATOR=0`.
+
+### რეალური პლატფორმის კონფიგურაცია
+
+`INTEGRATIONS` (JSON) ან `INTEGRATIONS_FILE` (ფაილის გზა):
+
+```json
+[{
+  "id": "upgaming", "adapter": "upgaming",
+  "operatorId": "…", "providerId": 123,
+  "walletUrl": "https://<Upgaming-ის მისამართი>",
+  "hashKey": "<Upgaming-ის HashKey>",
+  "currencies": ["USD", "EUR", "GEL"],
+  "allowedIps": ["…"]
+}]
+```
+
+Upgaming-ს მიეცით: `https://<ჩვენი დომენი>/p/upgaming` (GetGames, LaunchGame, AddFreeBet, CancelFreeBet). თამაშის ბმულის დომენი: `PUBLIC_URL` (Render-ზე ავტომატურად `RENDER_EXTERNAL_URL`).
+
+### Upgaming-თან დასაზუსტებელი
+
+სპეციფიკაცია რამდენიმე ადგილას ორაზროვანია. ამიტომ შესაბამისი პარამეტრები კონფიგურირებადია, ნაგულისხმევი მნიშვნელობები ფრჩხილებშია:
+
+1. **ჰეშის ალგორითმი:** გვ. 3-ზე SHA512, გვ. 8-ზე SHA256 (`hashAlgo: "sha512"`).
+2. **სათაურის სახელი და ფორმატი:** „SecretKey“ სათაურის სახელია? მნიშვნელობა `SHA-512=<hash>` hex-ია თუ base64? (`hashHeader: "SecretKey"`, `hashPrefix: "SHA-512="`, `hashEncoding: "hex"`)
+3. **Upgaming-ის ჩვენთან მოთხოვნები** (LaunchGame და სხვ.) ჰეშით მოდის, თუ მხოლოდ IP-ების სიით მოწმდება? (`allowedIps`)
+4. **წაგებული რაუნდი** WIN 0-ით უნდა დაიხუროს? (`closeRoundWithZeroWin: true`)
+5. **გამეორებული ტრანზაქცია:** `TRANSACTION_ALREADY_PROCESSED` (403) თუ თავდაპირველი წარმატებული პასუხი? ადაპტერი ორივეს წარმატებად თვლის.
+6. **ფორმატები:** `roundid` GUID უნდა იყოს? `gameId` LaunchGame-ში Integer-ია, სხვაგან String.
+7. **WIN ამოწურულ სესიაზე:** მიიღება, თუ `SESSION_EXPIRED` ბრუნდება?
+8. **FREESPINWIN და ფრიბეტები:** Riviera Rush crash-თამაშია. ფრიბეტები ინახება, მაგრამ თამაში ჯერ არ იყენებს (`FreespinSupport: false`).
+
 ## რეალურ ფულზე გადასვლამდე
 
 - [ ] bets-ის ფაილური საცავი → PostgreSQL. ყოველი ოპერაცია ტრანზაქციაში უნდა სრულდებოდეს და ჟურნალი ორმაგი ჩანაწერით უნდა იწარმოოს. სერვისის API არ იცვლება.
-- [ ] B2B მოდელისთვის: ოპერატორის Wallet API (`bet`, `win`, `rollback`) და ოპერატორის მხარეს ავტორიზაცია.
+- [x] B2B მოდელისთვის: ოპერატორის Wallet API (`bet`, `win`, `rollback`), შუამავლით (`services/integrations`). ჯერ Upgaming-ის ადაპტერი და სატესტო კაზინო.
 - [ ] RNG-ისა და მათემატიკის სერტიფიცირება აკრედიტებულ ლაბორატორიაში (მაგ. GLI, BMM, iTech Labs).
 - [ ] `secret` HSM-ში ან საიდუმლოების მენეჯერში. ჯაჭვის ამოწურვამდე ახალი commit-ის პროცედურა.
 - [ ] TLS (wss://), ჰორიზონტალური მასშტაბირება (ერთი რაუნდის ძრავა + pub/sub), მონიტორინგი.

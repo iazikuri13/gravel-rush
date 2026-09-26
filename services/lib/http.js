@@ -4,7 +4,8 @@ import { createServer, request as httpRequest } from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 
 export class HttpError extends Error {
-  constructor(status, message) { super(message); this.status = status; }
+  /** code — მანქანურად წასაკითხი მიზეზი (მაგ. INSUFFICIENT_FUNDS), სერვისებს შორის გადაეცემა */
+  constructor(status, message, code) { super(message); this.status = status; if (code) this.code = code; }
 }
 
 /** შიდა API დაცულია საერთო გასაღებით (x-internal-key) */
@@ -38,7 +39,7 @@ export function router(routes, { key } = {}) {
       if (out !== undefined && !res.headersSent) sendJson(res, 200, out);
     } catch (e) {
       if (res.headersSent) return res.end();
-      if (e instanceof HttpError) sendJson(res, e.status, { error: e.message });
+      if (e instanceof HttpError) sendJson(res, e.status, e.code ? { error: e.message, code: e.code } : { error: e.message });
       else { console.error(e); sendJson(res, 500, { error: 'სერვერის შეცდომა' }); }
     }
   };
@@ -140,7 +141,7 @@ export function apiClient(baseUrl, key) {
       body: body === undefined ? undefined : JSON.stringify(body)
     });
     const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new HttpError(r.status, data.error || `HTTP ${r.status}`);
+    if (!r.ok) throw new HttpError(r.status, data.error || `HTTP ${r.status}`, data.code);
     return data;
   };
   return {

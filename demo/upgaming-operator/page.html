@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="ka">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1a14">
+<title>სატესტო კაზინო</title>
+<style>
+:root{color-scheme:dark;--bg:#0c1511;--panel:#13201a;--panel2:#1a2b23;--line:rgba(255,255,255,.09);--text:#eef3ef;--muted:#90a79a;--acc:#5fd39b;--acc-ink:#062014;--warn:#f0b75a;--bad:#ff6b5e}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{touch-action:manipulation;-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+button,input,select{font:inherit;color:inherit}
+.wrap{max-width:1100px;margin:0 auto;padding:calc(env(safe-area-inset-top,0px) + 14px) 16px 28px;display:flex;flex-direction:column;gap:14px}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px}
+h1{margin:0;font-size:20px;letter-spacing:.01em}
+.note{color:var(--muted);font-size:12.5px}
+.badge{font-size:11.5px;font-weight:700;border:1px solid var(--line);border-radius:99px;padding:2px 9px;color:var(--warn)}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:14px}
+@media (max-width:820px){.grid{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;min-width:0}
+.card h2{margin:0 0 10px;font-size:12px;letter-spacing:.08em;color:var(--muted);font-weight:800}
+.players{display:flex;flex-direction:column;gap:8px}
+.pl{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;background:var(--panel2);border:1.5px solid var(--line);border-radius:12px;padding:10px 12px;cursor:pointer;text-align:left}
+.pl[aria-pressed="true"]{border-color:var(--acc)}
+.pl b{font-size:15px}
+.pl small{color:var(--muted);font-size:12px}
+.pl .bal{grid-row:1/3;grid-column:2;font-variant-numeric:tabular-nums;font-weight:800;font-size:18px}
+.pl .bal small{font-weight:600}
+.actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}
+.actions button,.btn{border:1px solid var(--line);background:var(--panel2);border-radius:10px;padding:10px 8px;font-weight:700;cursor:pointer}
+.actions .go{grid-column:1/-1;background:var(--acc);color:var(--acc-ink);border:0;font-size:16px;padding:13px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+select{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:6px 8px;font-size:16px}
+.tablewrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+th,td{padding:6px 6px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{color:var(--muted);font-weight:700;font-size:11px;letter-spacing:.05em}
+td.n{text-align:right}
+.t-BET{color:var(--warn)} .t-WIN,.t-FREESPINWIN{color:var(--acc)} .t-ROLLBACK{color:#8ab4ff} .t-DEPOSIT{color:var(--muted)}
+.empty{color:var(--muted);padding:10px 0}
+.fb{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);font-size:12.5px}
+.fb code{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis}
+.err{color:var(--bad);min-height:1.2em;font-size:13px}
+/* თამაში */
+.game{position:fixed;inset:0;z-index:10;background:#000;display:flex;flex-direction:column}
+.game-bar{display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top,0px) + 6px) 12px 6px;background:#0a120e;border-bottom:1px solid var(--line)}
+.game-bar button{border:1px solid var(--line);background:var(--panel2);border-radius:9px;padding:6px 12px;font-weight:700;cursor:pointer}
+.game-bar .who{margin-left:auto;font-size:13px;color:var(--muted);text-align:right}
+.game-bar .who b{color:var(--text);font-variant-numeric:tabular-nums}
+.game iframe{flex:1;border:0;width:100%}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>სატესტო კაზინო</h1>
+    <span class="badge">Upgaming-ის იმიტაცია · დემო ფული</span>
+    <span class="note" id="meta"></span>
+  </header>
+
+  <div class="grid">
+    <section class="card">
+      <h2>მოთამაშეები · ბალანსი კაზინოს მხარეს</h2>
+      <div class="players" id="players"></div>
+      <div class="actions">
+        <button class="go" id="launch" type="button">▶ თამაშის გაშვება</button>
+        <button id="dep" type="button">+50 შევსება</button>
+        <button id="fb" type="button">ფრიბეტი 1.00</button>
+        <button id="reset" type="button">თავიდან</button>
+      </div>
+      <div class="row"><label class="note" for="device">მოწყობილობა</label>
+        <select id="device"><option value="MOBILE">MOBILE</option><option value="DESKTOP">DESKTOP</option></select>
+        <span class="note" id="gameName"></span>
+      </div>
+      <div class="err" id="err" role="alert"></div>
+    </section>
+
+    <section class="card">
+      <h2>ტრანზაქციები (პროვაიდერი → კაზინო)</h2>
+      <div class="tablewrap"><table>
+        <thead><tr><th>#</th><th>ტიპი</th><th>მოთამაშე</th><th class="n">თანხა</th><th class="n">ბალანსი</th><th>რაუნდი</th></tr></thead>
+        <tbody id="log"></tbody>
+      </table></div>
+      <div class="empty" id="logEmpty">ჯერ არაფერია. გაუშვი თამაში და დადე ფსონი.</div>
+    </section>
+
+    <section class="card">
+      <h2>ფრიბეტები (AddFreeBet / CancelFreeBet)</h2>
+      <div id="fbs"></div>
+      <p class="note">ფრიბეტები შუამავალში ინახება. Riviera Rush crash-თამაშია და ფრიბეტებს ჯერ არ იყენებს.</p>
+    </section>
+
+    <section class="card">
+      <h2>როგორ მუშაობს</h2>
+      <p class="note">1. „თამაშის გაშვება“ → კაზინო სერვერიდან იძახებს პროვაიდერის <code>LaunchGame</code>-ს და იღებს თამაშის ბმულს.<br>
+      2. თამაშში ყოველი ფსონი → პროვაიდერი იძახებს კაზინოს <code>POST /transactions</code> (BET), მოგება → WIN, გაუქმება → ROLLBACK.<br>
+      3. ყველა მოთხოვნა შემოწმებულია ჰეშით: <code>SHA-512("{CasinoSessionId}{Currency}{GameId}{playerid}{HashKey}")</code>.</p>
+    </section>
+  </div>
+</div>
+
+<div class="game" id="game" hidden>
+  <div class="game-bar">
+    <button id="close" type="button">← ლობი</button>
+    <span class="who" id="who"></span>
+  </div>
+  <iframe id="frame" title="თამაში" allow="fullscreen"></iframe>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+let state = null, sel = null, games = [];
+const money = (a, c) => `${Number(a).toFixed(2)} ${c || ''}`.trim();
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+async function api(path, body) {
+  const r = await fetch(path, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {});
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || d.errormessage || `HTTP ${r.status}`);
+  return d;
+}
+const showErr = e => { $('#err').textContent = e ? (e.message || String(e)) : ''; };
+function render() {
+  if (!state) return;
+  if (!sel || !state.players.some(p => p.id === sel)) sel = state.players[0]?.id;
+  $('#meta').textContent = `operatorId: ${state.operatorId} · providerId: ${state.providerId}`;
+  $('#players').innerHTML = state.players.map(p => `<button class="pl" type="button" data-id="${esc(p.id)}" aria-pressed="${p.id === sel}"><b>${esc(p.name)}</b><span class="bal">${Number(p.balance).toFixed(2)} <small>${esc(p.currency)}</small></span><small>${esc(p.id)}</small></button>`).join('');
+  const rows = state.log;
+  $('#logEmpty').hidden = rows.length > 0;
+  $('#log').innerHTML = rows.map(t => `<tr><td>${esc(t.id)}</td><td class="t-${esc(t.type)}">${esc(t.type)}</td><td>${esc(t.player)}</td><td class="n">${Number(t.amount).toFixed(2)}</td><td class="n">${money(t.balance, t.currency)}</td><td>${esc(t.round || '')}</td></tr>`).join('');
+  $('#fbs').innerHTML = state.freebets.length ? state.freebets.map(f => `<div class="fb"><span>${esc(f.player)} · ${Number(f.amount).toFixed(2)} · ${f.state === 'active' ? 'აქტიური' : 'გაუქმებული'}</span><code>${esc(f.id)}</code>${f.state === 'active' ? `<button class="btn" type="button" data-cancel="${esc(f.id)}">გაუქმება</button>` : ''}</div>`).join('') : '<div class="empty">ფრიბეტი არ არის.</div>';
+  const pl = state.players.find(p => p.id === sel);
+  if (pl) $('#who').innerHTML = `${esc(pl.name)} · <b>${money(pl.balance, pl.currency)}</b>`;
+}
+async function refresh() { try { state = await api('api/state'); render(); } catch (e) { showErr(e); } }
+$('#players').addEventListener('click', e => { const b = e.target.closest('.pl'); if (b) { sel = b.dataset.id; render(); } });
+$('#fbs').addEventListener('click', async e => { const b = e.target.closest('[data-cancel]'); if (!b) return; try { await api('api/freebet/cancel', { id: b.dataset.cancel }); showErr(); refresh(); } catch (err) { showErr(err); } });
+$('#launch').addEventListener('click', async () => {
+  showErr();
+  try {
+    const r = await api('api/launch', { playerId: sel, device: $('#device').value, lobbyUrl: location.href });
+    $('#frame').src = r.url; $('#game').hidden = false;
+  } catch (e) { showErr(e); }
+});
+$('#close').addEventListener('click', () => { $('#game').hidden = true; $('#frame').src = 'about:blank'; refresh(); });
+$('#dep').addEventListener('click', async () => { try { await api('api/deposit', { playerId: sel, amount: 50 }); showErr(); refresh(); } catch (e) { showErr(e); } });
+$('#fb').addEventListener('click', async () => { try { await api('api/freebet', { playerId: sel, amount: 1 }); showErr(); refresh(); } catch (e) { showErr(e); } });
+$('#reset').addEventListener('click', async () => { try { await api('api/reset', {}); showErr(); refresh(); } catch (e) { showErr(e); } });
+api('api/games').then(g => { games = g; $('#gameName').textContent = g.map(x => `${x.Name} (#${x.Id})`).join(', '); }).catch(showErr);
+refresh(); setInterval(refresh, 1000);
+</script>
+</body>
+</html>

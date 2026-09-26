@@ -1,7 +1,7 @@
 // გეითვეი — ბრაუზერის ერთადერთი შესასვლელი: სტატიკური ფაილები + WebSocket.
 // თავად არაფერს წყვეტს: ბრძანებებს ფსონების სერვისს გადასცემს, ორივე სერვისის
 // მოვლენებს აერთიანებს და მოთამაშეებს უგზავნის. ბრაუზერის პროტოკოლი უცვლელია.
-import { createServer } from 'node:http';
+import { createServer, request as httpRequest } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join, normalize, extname } from 'node:path';
 import { WebSocketServer } from 'ws';
@@ -11,7 +11,7 @@ import { G, MAX_CRASH_100 } from '../../public/shared/math.js';
 
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
 
-export async function startGateway({ port = 3000, host, publicDir, key, roundUrl, betsUrl, allowedOrigins = [] }) {
+export async function startGateway({ port = 3000, host, publicDir, key, roundUrl, betsUrl, allowedOrigins = [], proxies = [] }) {
   const round = apiClient(roundUrl, key);
   const bets = apiClient(betsUrl, key);
 
@@ -22,9 +22,26 @@ export async function startGateway({ port = 3000, host, publicDir, key, roundUrl
   let betList = (await bets.get('/bets/current')).bets;
 
   // ---------- HTTP ----------
+  // გადამისამართება შიდა სერვისებზე: { prefix: '/p/', target: 'http://127.0.0.1:…', strip: false }
+  const proxy = (req, res, p) => {
+    const path = p.strip ? req.url.slice(p.prefix.length - 1) || '/' : req.url;
+    const t = new URL(p.target);
+    const headers = { ...req.headers, host: t.host, 'x-forwarded-for': [req.headers['x-forwarded-for'], req.socket.remoteAddress].filter(Boolean).join(', ') };
+    const up = httpRequest({ hostname: t.hostname, port: t.port, method: req.method, path, headers }, r => {
+      res.writeHead(r.statusCode, r.headers); r.pipe(res);
+    });
+    up.on('error', () => { if (!res.headersSent) { res.writeHead(502, { 'content-type': 'text/plain; charset=utf-8' }); } res.end('სერვისი მიუწვდომელია'); });
+    req.pipe(up);
+  };
+
   const http = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
     if (url.pathname === '/healthz') { res.writeHead(200); return res.end('ok'); }
+    const px = proxies.find(p => url.pathname.startsWith(p.prefix) || url.pathname + '/' === p.prefix);
+    if (px) {
+      if (url.pathname + '/' === px.prefix) { res.writeHead(301, { location: px.prefix + url.search }); return res.end(); }
+      return proxy(req, res, px);
+    }
     if (url.pathname === '/api/fairness') {
       res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
       return res.end(JSON.stringify({ ...fairness, history }));
@@ -107,7 +124,9 @@ export async function startGateway({ port = 3000, host, publicDir, key, roundUrl
         if (token) return;
         token = 'pending';
         try {
-          const r = await bets.post('/players', { token: typeof msg.token === 'string' ? msg.token : undefined, name: msg.name });
+          const r = await bets.post('/players', typeof msg.session === 'string'
+            ? { session: msg.session }
+            : { token: typeof msg.token === 'string' ? msg.token : undefined, name: msg.name });
           token = r.token;
           if (!socketsByToken.has(token)) socketsByToken.set(token, new Set());
           socketsByToken.get(token).add(ws);

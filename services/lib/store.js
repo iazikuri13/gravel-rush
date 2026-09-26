@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync, writeFileSync, appendFileSync, existsSync, ren
 import { join } from 'node:path';
 
 export class JsonStore {
-  constructor(dir) { this.dir = dir; mkdirSync(dir, { recursive: true }); this.timers = {}; }
+  constructor(dir) { this.dir = dir; mkdirSync(dir, { recursive: true }); this.timers = {}; this.getters = {}; }
 
   read(name, fallback) {
     const p = join(this.dir, name);
@@ -20,8 +20,12 @@ export class JsonStore {
 
   /** დაგვიანებული ჩაწერა (ხშირი ცვლილებებისთვის) */
   writeSoon(name, getData, ms = 1000) {
+    this.getters[name] = getData;
     if (!this.timers[name]) this.timers[name] = setTimeout(() => this.write(name, getData()), ms);
   }
+
+  /** დაგვიანებული ჩაწერების დაუყოვნებლივ შესრულება (გაჩერებისას) */
+  flush() { for (const name of Object.keys(this.timers)) this.write(name, this.getters[name]()); }
 
   append(name, obj) {
     appendFileSync(join(this.dir, name), JSON.stringify({ ts: new Date().toISOString(), ...obj }) + '\n');

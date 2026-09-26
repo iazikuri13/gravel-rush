@@ -658,6 +658,31 @@ async function runVerify() {
   } finally { verifying = false; }
 }
 
+/* ---------- მობილური ეკრანი: ხილული სიმაღლე და მასშტაბის აღდგენა ---------- */
+// Safari-ს ქვედა ზოლი გვერდს ფარავს; აპლიკაციის სიმაღლეს ვზღუდავთ რეალურად ხილული ნაწილით
+const vv = window.visualViewport;
+function fitHeight() {
+  if (!vv || vv.scale > 1.01) return;
+  const svh = document.createElement('div');
+  svh.style.cssText = 'position:absolute;visibility:hidden;height:100svh;width:0';
+  document.body.appendChild(svh);
+  const h = Math.min(svh.offsetHeight || innerHeight, Math.round(vv.height));
+  svh.remove();
+  document.documentElement.style.setProperty('--app-h', h + 'px');
+}
+// iOS შეიძლება გადიდებული დატოვოს (ძველი ვერსიიდან ან ველზე შეხებისას) — ვაბრუნებთ 1-ზე
+const vpMeta = document.querySelector('meta[name=viewport]');
+function resetZoom() {
+  if (!vpMeta || !vv || vv.scale <= 1.01) return;
+  const c = vpMeta.content;
+  vpMeta.content = c + ', user-scalable=0';
+  requestAnimationFrame(() => { vpMeta.content = c; });
+}
+fitHeight(); resetZoom();
+vv?.addEventListener('resize', fitHeight);
+addEventListener('orientationchange', () => setTimeout(fitHeight, 300));
+document.addEventListener('focusout', e => { if (e.target.matches('input')) setTimeout(() => { resetZoom(); fitHeight(); }, 50); });
+
 /* ---------- გვერდითი პანელი (მობილურზე — ქვედა ფურცელი) ---------- */
 const side = $('#side'), scrim = $('#scrim'), menuBtn = $('#menuBtn');
 function openSheet() {

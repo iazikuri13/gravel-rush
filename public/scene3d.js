@@ -718,7 +718,7 @@ export function createScene3D(api) {
       } else {
         if (bi >= bits.length) continue; const sp = bits[bi++]; sp.visible = true;
         P3(s, l, p.k === 'spark' ? .3 + a * .8 : Math.max(.06, .15 + 6 * a * (1 - a)), sp.position);
-        const sz = p.k === 'spark' ? .09 : p.r / u * .35; sp.scale.set(sz, sz, 1);
+        const sz = p.k === 'spark' ? .09 : Math.min(.22, p.r / u * .2); sp.scale.set(sz, sz, 1);
         sp.material.color.set(p.k === 'spark' ? '#ffcf70' : p.col); sp.material.opacity = Math.min(1, al * 1.5);
       }
     }

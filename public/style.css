@@ -179,9 +179,9 @@ code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11.5px
 
 /* ---------- phones & tablets: one fixed screen, no page scroll ---------- */
 @media (max-width:900px){
+  /* 100svh — სიმაღლე ბრაუზერის პანელების გამოჩენისას: ქვედა ღილაკი Safari-ს ზოლის ქვეშ არ ხვდება */
   html,body{height:100%;overflow:hidden;overscroll-behavior:none}
-  body{position:fixed;inset:0}
-  .app{height:100vh;height:100dvh;max-width:none;margin:0;
+  .app{height:100vh;height:100svh;height:var(--app-h,100svh);max-width:none;margin:0;overflow:hidden;
     padding:calc(env(safe-area-inset-top,0px) + 8px) calc(env(safe-area-inset-right,0px) + 12px) calc(env(safe-area-inset-bottom,0px) + 10px) calc(env(safe-area-inset-left,0px) + 12px);
     grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr) auto;
     grid-template-areas:"top" "hist" "stage" "deck";gap:8px;align-items:stretch}

@@ -107,7 +107,7 @@ button{-webkit-tap-highlight-color:transparent}
 #amt:focus{outline:none}
 .amt-field:focus-within{border-color:var(--gold)}
 input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
-.chips{grid-area:chips;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}
+.chips{grid-area:chips;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
 .chips button{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:5px 0;font-family:var(--num);font-weight:700;font-size:15px;cursor:pointer}
 .chips button:hover,.step:hover{border-color:var(--gold)}
 .chips button:active,.step:active{background:var(--raise)}

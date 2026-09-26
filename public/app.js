@@ -709,9 +709,8 @@ document.querySelectorAll('.step').forEach(b => b.addEventListener('click', () =
 }));
 $('#chips').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
-  const cur = readAmt(), v = b.dataset.v, bal = S.me ? S.me.balance / 100 : 1000;
-  let n = v === 'half' ? cur / 2 : v === 'dbl' ? cur * 2 : +v;
-  n = Math.max(1, Math.min(n, 1000, Math.max(1, Math.floor(bal))));
+  const bal = S.me ? S.me.balance / 100 : 1000;
+  const n = Math.max(1, Math.min(+b.dataset.v, 1000, Math.max(1, Math.floor(bal))));
   $('#amt').value = String(Math.round(n * 100) / 100); updateAction(true);
 });
 $('#refill').addEventListener('click', () => send({ t: 'refill' }));

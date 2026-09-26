@@ -65,3 +65,33 @@ test('ქეშაუთი გაჩერებამდე ყოველთ
     assert.ok(mult100At(t) < crash100);
   }
 });
+
+test('×1.00-ის ზღვარი ზუსტია: crash = ×1.00 ⟺ r < 4/101', () => {
+  // n = HMAC-ის პირველი 52 ბიტი; ×1.01 იწყება n ≥ ceil(4·2^52 / 101)-დან
+  const TWO_52 = 2n ** 52n, first = (4n * TWO_52 + 100n) / 101n;
+  const hex = n => n.toString(16).padStart(13, '0') + '0'.repeat(51);
+  assert.equal(crashFromHash(hex(first - 1n)).crash100, 100);
+  assert.equal(crashFromHash(hex(first)).crash100, 101);
+  assert.ok(Math.abs(Number(first) / 2 ** 52 - 4 / 101) < 1e-15);
+});
+
+test('ბოლიდები დამოუკიდებელია: ×1.00 ერთად — p², სამივე — p³ (ნამდვილი ჯაჭვი)', () => {
+  // ყოველი ბოლიდის შედეგი ცალკე HMAC-ით ითვლება. თუ ოდესმე ერთმანეთზე დამოკიდებული გახდა,
+  // „სამივე ×1.00“ 16 000-ში ერთის ნაცვლად გახშირდება — ეს ტესტი ამას დაიჭერს.
+  const N = 300000, p = 4 / 101;
+  const chain = buildChain(randomBytes(32).toString('hex'), N);
+  let one = 0, pairs = 0, all = 0;
+  for (let n = 1; n <= N; n++) {
+    const f = roundResults(chain[n], 'independence-test').map(r => r.crash100 === 100);
+    one += f[0] + f[1] + f[2];
+    pairs += (f[0] && f[1]) + (f[0] && f[2]) + (f[1] && f[2]);
+    all += f[0] && f[1] && f[2];
+  }
+  const within = (hits, trials, q, name) => {
+    const sd = Math.sqrt(trials * q * (1 - q));
+    assert.ok(Math.abs(hits - trials * q) < 4.5 * sd + 1, `${name}: ${hits}, მოსალოდნელი ${(trials * q).toFixed(1)} ± ${sd.toFixed(1)}`);
+  };
+  within(one, 3 * N, p, 'ერთი ბოლიდი ×1.00');
+  within(pairs, 3 * N, p ** 2, 'ორი ერთად ×1.00');
+  within(all, N, p ** 3, 'სამივე ×1.00');
+});

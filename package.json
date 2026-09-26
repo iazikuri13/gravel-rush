@@ -11,7 +11,8 @@
     "test:separate": "node test/run-separate.js",
     "start:round": "node services/round/main.js",
     "start:bets": "node services/bets/main.js",
-    "start:gateway": "node services/gateway/main.js"
+    "start:gateway": "node services/gateway/main.js",
+    "simulate": "node scripts/simulate.js"
   },
   "dependencies": {
     "ws": "^8.18.0"

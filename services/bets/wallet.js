@@ -3,7 +3,7 @@
 // და ქეშაუთის დროზე ყოფნას ეკითხება რაუნდის სერვისს (check).
 import { EventEmitter } from 'node:events';
 import { randomBytes } from 'node:crypto';
-import { payout, timeFor } from '../../public/shared/math.js';
+import { payout, timeFor, maxWinM100 } from '../../public/shared/math.js';
 import { RULES } from '../lib/rules.js';
 import { HttpError } from '../lib/http.js';
 
@@ -16,6 +16,8 @@ function extError(e) {
   if (!e.status || e.status >= 500 || e.code === 'PLATFORM_UNAVAILABLE') return new HttpError(503, 'კაზინოსთან კავშირი ვერ დამყარდა — სცადე თავიდან');
   return new HttpError(409, e.message || 'კაზინომ ოპერაცია უარყო');
 }
+// ქეშაუთის წერტილი: მოთამაშის ავტო ან მოგების ზღვარი — რომელიც უფრო ადრე მოდის
+const target = b => Math.min(b.auto ?? Infinity, b.cap);
 const uncertain = e => !e.status || e.status >= 500 || e.code === 'PLATFORM_UNAVAILABLE';
 
 export class Wallet extends EventEmitter {
@@ -162,8 +164,8 @@ export class Wallet extends EventEmitter {
   #scheduleAuto() {
     const { raceStart, speed } = this.state;
     for (const b of this.bets.values()) {
-      if (!b.auto) continue;
-      const at = raceStart + timeFor(b.auto / 100) / speed * 1000;
+      // ყოველ ფსონს აქვს ავტომატური ქეშაუთი მოგების ზღვარზე; მოთამაშის ავტო — თუ უფრო ადრეა
+      const at = raceStart + timeFor(target(b) / 100) / speed * 1000;
       this.timers.push(setTimeout(() => this.#autoCheck(b), Math.max(0, at - Date.now())));
     }
   }
@@ -172,28 +174,31 @@ export class Wallet extends EventEmitter {
     if (b.state !== 'open') return;
     b.state = 'cashing';
     let r;
-    try { r = await this.round.check(b.round, { car: b.car, m100: b.auto }); }
+    const t = target(b);
+    try { r = await this.round.check(b.round, { car: b.car, m100: t }); }
     catch { r = { ok: false }; }
     if (b.state !== 'cashing') return;
-    if (r.ok) this.#win(b, b.auto);
+    if (r.ok) this.#win(b, t);
     else { b.state = 'open'; this.#settleIfEnded(b); }
   }
 
   #settleIfEnded(b) {
     const e = this.ended.get(b.car);
     if (!e || b.state !== 'open') return;
-    if (b.auto && b.auto <= e.crash100) this.#win(b, b.auto);
+    if (target(b) <= e.crash100) this.#win(b, target(b));
     else this.#lose(b, e);
   }
 
   #win(b, m100) {
     const pl = this.players[b.token];
-    b.state = 'won'; b.m100 = m100; b.win = payout(b.amount, m100);
+    m100 = Math.min(m100, b.cap);
+    b.state = 'won'; b.m100 = m100; b.win = Math.min(payout(b.amount, m100), RULES.maxWin);
+    const maxWin = m100 === b.cap && (!b.auto || b.auto > b.cap);
     pl.balance += b.win;          // გარე მოთამაშისთვის — წინასწარი; ზუსტს კაზინოს პასუხი დააყენებს
     if (pl.ext) this.#queue(b.token, { id: `win-${b.txId}`, kind: 'win', roundId: String(b.round), amount: b.win });
     this.#ledger({ type: 'win', round: b.round, token: b.token, car: b.car, amount: b.amount, m100, win: b.win, balance: pl.balance });
     this.#savePlayers();
-    this.emit('settled', { token: b.token, result: { state: 'won', car: b.car, m100, win: b.win, amount: b.amount }, me: this.me(b.token) });
+    this.emit('settled', { token: b.token, result: { state: 'won', car: b.car, m100, win: b.win, amount: b.amount, ...(maxWin ? { maxWin: true } : {}) }, me: this.me(b.token) });
     this.#changed();
   }
 
@@ -277,7 +282,7 @@ export class Wallet extends EventEmitter {
     const pl = this.#player(token);
     if (![0, 1, 2].includes(car)) throw new HttpError(400, 'აირჩიე მანქანა');
     if (!Number.isInteger(amount) || amount < RULES.minBet || amount > RULES.maxBet) throw new HttpError(400, 'ფსონი 1.00-დან 1 000.00-მდე უნდა იყოს');
-    if (auto != null && (!Number.isInteger(auto) || auto < RULES.minAuto || auto > RULES.maxAuto)) throw new HttpError(400, 'ავტო-ქეშაუთი ×1.01-დან ×100-მდე უნდა იყოს');
+    if (auto != null && (!Number.isInteger(auto) || auto < RULES.minAuto || auto > RULES.maxAuto)) throw new HttpError(400, `ავტო-ქეშაუთი ×1.01-დან ×${(RULES.maxAuto / 100).toLocaleString('en')}-მდე უნდა იყოს`);
     const acc = await this.round.accepting();
     if (!acc.accepting || !this.state || acc.round !== this.state.round) throw rule('ფსონების მიღება დასრულებულია — დაელოდე შემდეგ ეტაპს');
     // await-ის შემდეგ ხელახლა ვამოწმებთ (პარალელური მოთხოვნები)
@@ -302,7 +307,7 @@ export class Wallet extends EventEmitter {
       if (pl.balance < amount) throw rule('ბალანსი არ გყოფნის — შეამცირე ფსონი');
       pl.balance -= amount;
     }
-    const bet = { token, pid: pl.pid, name: pl.name, round: acc.round, car, amount, auto: auto ?? null, state: 'open', m100: 0, win: 0, txId };
+    const bet = { token, pid: pl.pid, name: pl.name, round: acc.round, car, amount, auto: auto ?? null, cap: maxWinM100(amount, RULES.maxWin), state: 'open', m100: 0, win: 0, txId };
     this.bets.set(token, bet);
     this.#ledger({ type: 'bet', round: acc.round, token, car, amount, auto: bet.auto, balance: pl.balance });
     this.#savePlayers();

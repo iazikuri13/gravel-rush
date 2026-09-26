@@ -8,7 +8,7 @@ import { WebSocketServer } from 'ws';
 import { subscribe, apiClient, HttpError } from '../lib/http.js';
 import { RULES } from '../lib/rules.js';
 import { createAdmin } from './admin.js';
-import { G, MAX_CRASH_100 } from '../../public/shared/math.js';
+import { G } from '../../public/shared/math.js';
 
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
 
@@ -141,7 +141,7 @@ export async function startGateway({ port = 3000, host, publicDir, key, roundUrl
           socketsByToken.get(token).add(ws);
           send(ws, {
             t: 'welcome', token, ...fairness,
-            rules: { betMs: roundState.betMs, endMs: roundState.endMs, speed: roundState.speed, G, minBet: RULES.minBet, maxBet: RULES.maxBet, maxCrash100: MAX_CRASH_100 }
+            rules: { betMs: roundState.betMs, endMs: roundState.endMs, speed: roundState.speed, G, minBet: RULES.minBet, maxBet: RULES.maxBet, maxWin: RULES.maxWin }
           });
           send(ws, { t: 'history', items: history });
           send(ws, { t: 'me', now: Date.now(), ...r.me });

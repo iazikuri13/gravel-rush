@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomBytes, createHmac } from 'node:crypto';
 import { buildChain, roundResults, sha256 } from '../services/round/fair.js';
-import { crashFromHash, payout, mult100At, endTime, MAX_CRASH_100 } from '../public/shared/math.js';
+import { crashFromHash, payout, mult100At, endTime, maxWinM100 } from '../public/shared/math.js';
 import { resultsFromSeed, verifyChain } from '../public/shared/verify.js';
 
 test('ჰეშ-ჯაჭვი: ყოველი რგოლი = sha256(შემდეგი)', () => {
@@ -15,14 +15,18 @@ test('შედეგი დეტერმინისტულია და �
   assert.deepEqual(roundResults(seed, 'cs'), roundResults(seed, 'cs'));
   for (let i = 0; i < 5000; i++) {
     const { crash100, type } = crashFromHash(randomBytes(32).toString('hex'));
-    assert.ok(Number.isInteger(crash100) && crash100 >= 100 && crash100 <= MAX_CRASH_100);
+    assert.ok(Number.isInteger(crash100) && crash100 >= 100);
     assert.ok(type === 'crash' || type === 'stall');
   }
 });
 
 test('კიდურა მნიშვნელობები', () => {
   assert.equal(crashFromHash('0'.repeat(64)).crash100, 100);          // r = 0  → ×0.97 → ×1.00
-  assert.equal(crashFromHash('f'.repeat(64)).crash100, MAX_CRASH_100); // r → 1 → ზღვარი
+  // r → 1: კოეფიციენტს ზედა ზღვარი არ აქვს (97 · 2^52 ≈ ×4.37·10^15)
+  assert.equal(crashFromHash('f'.repeat(64)).crash100, Number(97n * 2n ** 52n));
+  // ×100-ზე მეტი აღარ იჭრება: r = 0.999 → 97 / 0.001 = ×970.00 (ადრე ×100.00 იქნებოდა)
+  const c970 = crashFromHash(Math.floor(2 ** 52 * 0.999).toString(16).padStart(13, '0') + '0'.repeat(51)).crash100;
+  assert.ok(c970 >= 96990 && c970 <= 97000, String(c970));
   // r = 0.5 → 97 / 0.5 = 194 → ×1.94
   assert.equal(crashFromHash('8' + '0'.repeat(63)).crash100, 194);
 });
@@ -60,7 +64,7 @@ test('RTP ≈ 97% ნებისმიერი ქეშაუთის მი
 });
 
 test('ქეშაუთი გაჩერებამდე ყოველთვის crash-ზე ნაკლებია', () => {
-  for (const crash100 of [101, 150, 237, 1000, MAX_CRASH_100]) {
+  for (const crash100 of [101, 150, 237, 1000, 10000, 1_000_000]) {
     const t = endTime(crash100) - 1e-9;
     assert.ok(mult100At(t) < crash100);
   }
@@ -94,4 +98,27 @@ test('ბოლიდები დამოუკიდებელია: ×1.0
   within(one, 3 * N, p, 'ერთი ბოლიდი ×1.00');
   within(pairs, 3 * N, p ** 2, 'ორი ერთად ×1.00');
   within(all, N, p ** 3, 'სამივე ×1.00');
+});
+
+test('მოგების ზღვარი: ქეშაუთის წერტილი ისეა არჩეული, რომ მოგება ზღვარს არ აჭარბებს', () => {
+  const MAX = 10_000_000;                              // 100 000.00
+  for (const amount of [100, 777, 5000, 33333, 100000]) {
+    const cap = maxWinM100(amount, MAX);
+    assert.ok(payout(amount, cap) <= MAX, `ფსონი ${amount}: ${payout(amount, cap)}`);
+    assert.ok(payout(amount, cap + 1) > MAX || cap + 1 > MAX * 100 / amount, `ფსონი ${amount}: cap ყველაზე მაღალი დასაშვებია`);
+  }
+  assert.equal(maxWinM100(100000, MAX), 10000);        // 1 000.00 ფსონი → ×100.00-ზე 100 000.00
+});
+
+test('×100-ის ზემოთ განაწილება გრძელდება: P(crash ≥ x) ≈ 0.97 / x  x = 200, 1000-ზეც', () => {
+  const N = 600000;
+  let ge200 = 0, ge1000 = 0;
+  for (let i = 0; i < N; i++) {
+    const c = crashFromHash(createHmac('sha256', randomBytes(16)).update('x').digest('hex')).crash100;
+    if (c >= 20000) ge200++;
+    if (c >= 100000) ge1000++;
+  }
+  const check = (hits, p, name) => assert.ok(Math.abs(hits - N * p) < 4.5 * Math.sqrt(N * p * (1 - p)), `${name}: ${hits} vs ${(N * p).toFixed(0)}`);
+  check(ge200, 0.97 / 200, '≥ ×200');
+  check(ge1000, 0.97 / 1000, '≥ ×1000');
 });

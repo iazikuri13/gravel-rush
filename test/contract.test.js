@@ -101,7 +101,7 @@ describe('ფსონები', () => {
     for (const bad of [
       { car: 3, amount: 1000 }, { car: -1, amount: 1000 }, { car: '1', amount: 1000 },
       { car: 0, amount: 99 }, { car: 0, amount: 100001 }, { car: 0, amount: 150.5 },
-      { car: 0, amount: 1000, auto: 100 }, { car: 0, amount: 1000, auto: 10001 }, { car: 0, amount: 1000, auto: 1.5 }
+      { car: 0, amount: 1000, auto: 100 }, { car: 0, amount: 1000, auto: 10000001 }, { car: 0, amount: 1000, auto: 1.5 }
     ]) {
       const r = await a.request({ t: 'bet', ...bad });
       assert.equal(r.t, 'err', JSON.stringify(bad));

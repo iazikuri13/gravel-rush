@@ -7,14 +7,14 @@
 // თითოეული გადახრა ნაჩვენებია სტანდარტულ გადახრებში (z); |z| > 4 ნიშნავს პრობლემას.
 import { randomBytes } from 'node:crypto';
 import { buildChain, roundResults } from '../services/round/fair.js';
-import { payout, MAX_CRASH_100 } from '../public/shared/math.js';
+import { payout } from '../public/shared/math.js';
 
 const N = Number(process.argv[2] || 1_000_000);
 const CLIENT_SEED = process.argv[3] || 'simulation-client-seed';
 const t0 = Date.now();
 
 const chain = buildChain(randomBytes(32).toString('hex'), N);
-const crashes = [new Uint16Array(N), new Uint16Array(N), new Uint16Array(N)];
+const crashes = [new Float64Array(N), new Float64Array(N), new Float64Array(N)];
 let stalls = 0;
 for (let n = 1; n <= N; n++) {
   const res = roundResults(chain[n], CLIENT_SEED);
@@ -43,7 +43,7 @@ row('ორი ერთად ×1.00 (0+1, 0+2, 1+2)', pair01 + pair02 + pair12
 row('სამივე ×1.00', all, N, p1 ** 3);
 
 // P(crash ≥ x) = 0.97 / x  (სამივე ბოლიდი ერთად)
-for (const x of [101, 150, 200, 300, 500, 1000, 2000, 5000, MAX_CRASH_100]) {
+for (const x of [101, 150, 200, 300, 500, 1000, 2000, 5000, 10000, 20000, 100000]) {
   let hits = 0;
   for (let i = 0; i < 3; i++) for (let k = 0; k < N; k++) if (crashes[i][k] >= x) hits++;
   row(`P(crash ≥ ×${(x / 100).toFixed(2)})`, hits, 3 * N, 97 / x);
@@ -59,7 +59,7 @@ for (const r of rows) {
 // RTP: ფსონი 100.00 ავტო-ქეშაუთით target-ზე, ყველა ბოლიდზე
 console.log('\nRTP ავტო-ქეშაუთით (ფსონი ყოველ ბოლიდზე, ყოველ რბოლაში):');
 const rtps = [];
-for (const target of [101, 110, 150, 200, 300, 500, 1000, 2000, 5000, MAX_CRASH_100]) {
+for (const target of [101, 110, 150, 200, 300, 500, 1000, 2000, 5000, 10000, 20000]) {
   let staked = 0, ret = 0;
   for (let i = 0; i < 3; i++) for (let k = 0; k < N; k++) { staked += 10000; if (target <= crashes[i][k]) ret += payout(10000, target); }
   const rtp = ret / staked, p = 97 / target, se = (target / 100) * Math.sqrt(p * (1 - p) / (3 * N));

@@ -69,6 +69,7 @@ function onMessage(m) {
       if (!SESSION) store.set('gr_token', m.token);
       S.rules = m.rules; S.commit = m.commit; S.clientSeed = m.clientSeed;
       $('#fCommit').textContent = m.commit; $('#fClient').textContent = m.clientSeed;
+      if (m.rules?.maxWin) $('#maxWin').textContent = fmt(m.rules.maxWin);
       break;
     case 'pong': {
       const sent = pings.get(m.id); pings.delete(m.id);
@@ -83,7 +84,7 @@ function onMessage(m) {
       updateBal(); feedDirty = true; renderCards(); updateAction(true);
       break;
     case 'result':
-      if (m.state === 'won') toast(`ქეშაუთი ×${x100(m.m100)} · +${fmt(m.win)}`, 'win');
+      if (m.state === 'won') toast(m.maxWin ? `მაქსიმალური მოგება! ×${x100(m.m100)} · +${fmt(m.win)}` : `ქეშაუთი ×${x100(m.m100)} · +${fmt(m.win)}`, 'win');
       else toast(`${CARS[m.car].name} ${m.type === 'crash' ? 'დაეჯახა' : 'გაჩერდა'} ×${x100(m.crash100)}-ზე — ფსონი დაიწვა`, 'loss');
       break;
     case 'history': S.history = m.items; renderHistory(); break;

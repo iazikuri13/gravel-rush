@@ -105,6 +105,20 @@ describe('ფსონების სერვისი (ყალბი რა
     assert.equal(settled(a).length, 1); assert.equal(settled(b).length, 1);
   });
 
+  it('მოგების ზღვარი: კოეფიციენტი შეუზღუდავია, მოგება — არა (100 000.00)', async () => {
+    const big = (await api.post('/players', {})).token, autoHi = (await api.post('/players', {})).token, small = (await api.post('/players', {})).token;
+    // ბალანსი 1 000.00 — ფსონი 1 000.00 (მაქსიმუმი)
+    await api.post('/bets', { token: big, car: 0, amount: 100000 });                 // ავტოს გარეშე
+    await api.post('/bets', { token: autoHi, car: 0, amount: 50000, auto: 50000 });  // ავტო ×500 > ზღვრის ×200
+    await api.post('/bets', { token: small, car: 0, amount: 100, auto: 50000 });     // 1.00 × 500 = 500.00 — ზღვარს ქვემოთ
+    round.race();
+    round.carEnded(0, 80000);                                                        // ×800 — ადრე ×100-ზე მოიჭრებოდა
+    await until(() => settled(big).length && settled(autoHi).length && settled(small).length);
+    assert.deepEqual(settled(big)[0].result, { state: 'won', car: 0, m100: 10000, win: 10_000_000, amount: 100000, maxWin: true });
+    assert.deepEqual(settled(autoHi)[0].result, { state: 'won', car: 0, m100: 20000, win: 10_000_000, amount: 50000, maxWin: true });
+    assert.deepEqual(settled(small)[0].result, { state: 'won', car: 0, m100: 50000, win: 50000, amount: 100 });
+  });
+
   it('ხელით ქეშაუთი: რაუნდის სერვისი ადასტურებს და ადგენს კოეფიციენტს', async () => {
     const { token } = await api.post('/players', {});
     await api.post('/bets', { token, car: 0, amount: 2000 });

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Gravel Rush</title>
+<title>Riviera Rush</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Georgian:wdth,wght@62.5..100,400..900&family=Saira+Condensed:wght@500;700;800&display=swap">
@@ -13,8 +13,8 @@
 <div class="app">
   <header class="top">
     <div class="brand">
-      <span class="logo" aria-label="Gravel Rush"><span>GRAVEL</span><b>RUSH</b></span>
-      <span class="tag">რალის ქეშაუთი</span>
+      <span class="logo" aria-label="Riviera Rush"><span>RIVIERA</span><b>RUSH</b></span>
+      <span class="tag">ქუჩის ტრასის ქეშაუთი</span>
     </div>
     <div class="conn" id="conn" data-state="connecting"><i></i><span id="connText">კავშირი…</span></div>
     <div class="online"><strong id="online">0</strong> ონლაინ</div>
@@ -29,14 +29,15 @@
   </header>
 
   <div class="hist-wrap">
-    <div class="hist-label">ბოლო<br>ეტაპები</div>
+    <div class="hist-label">ბოლო<br>რბოლები</div>
     <div class="history" id="history"></div>
   </div>
 
   <div class="grid">
     <section class="main">
       <div class="stage" id="stage">
-        <canvas id="cv" aria-label="რალის ტრასა სამი მანქანით"></canvas>
+        <canvas id="gl" aria-label="ქუჩის ტრასა ნავსადგურთან, სამი ბოლიდით"></canvas>
+        <canvas id="cv" aria-hidden="true"></canvas>
         <div class="hud">
           <div class="mult count" id="mult">—</div>
           <div class="phase" id="phase">სერვერთან დაკავშირება…</div>
@@ -46,7 +47,7 @@
       </div>
 
       <div class="pick-head">
-        <span class="label">აირჩიე მანქანა</span>
+        <span class="label">აირჩიე ბოლიდი</span>
         <span class="hint">სამივეს ერთნაირი შანსი აქვს · <span class="kbd">1</span><span class="kbd">2</span><span class="kbd">3</span></span>
       </div>
       <div class="cars" id="cars"></div>
@@ -79,7 +80,7 @@
     <aside class="side">
       <div class="feed">
         <div class="feed-head">
-          <span class="label">ფსონები ამ ეტაპზე</span>
+          <span class="label">ფსონები ამ რბოლაზე</span>
           <span class="sum" id="feedSum"></span>
         </div>
         <ul id="feed"></ul>
@@ -109,13 +110,14 @@
 
   <footer class="foot">
     <ol class="how">
-      <li>აირჩიე მანქანა სტარტამდე</li>
+      <li>აირჩიე ბოლიდი სტარტამდე</li>
       <li>დადე ფსონი</li>
-      <li>აიღე მოგება, სანამ შენი მანქანა დაეჯახება ან გაჩერდება</li>
+      <li>აიღე მოგება, სანამ შენი ბოლიდი დაეჯახება ან გაჩერდება</li>
     </ol>
     <span>დემო: ვირტუალური კრედიტები. RTP 97%. <span class="kbd">Space</span> — ფსონი / ქეშაუთი</span>
   </footer>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
 <script type="module" src="app.js"></script>
 </body>
 </html>

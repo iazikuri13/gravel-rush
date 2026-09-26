@@ -74,7 +74,7 @@ describe('კავშირი და ანგარიში', () => {
   it('სტატიკური ფაილები და path traversal-ის დაცვა', async () => {
     const r = await fetch(sys.url + '/');
     assert.equal(r.status, 200);
-    assert.match(await r.text(), /<title>Gravel Rush<\/title>/);
+    assert.match(await r.text(), /<title>Riviera Rush<\/title>/);
     assert.equal((await fetch(sys.url + '/shared/math.js')).status, 200);
     const bad = await fetch(sys.url + '/..%2f..%2fpackage.json');
     assert.notEqual(bad.status, 200);

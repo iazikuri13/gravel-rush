@@ -1,7 +1,7 @@
 :root{
   color-scheme:dark;
-  --bg:#0e1410; --panel:#151d18; --panel2:#1c2620; --line:#27352c;
-  --text:#efe7d6; --muted:#8ea193; --dust:#d2ad73; --win:#4fd67a; --loss:#ff6a55;
+  --bg:#0b111b; --panel:#121a27; --panel2:#19233a; --line:#26324a;
+  --text:#f1ece2; --muted:#8e9bb3; --dust:#e3bd72; --win:#4fd67a; --loss:#ff5d52;
   --num:"Saira Condensed","Noto Sans Georgian",system-ui,sans-serif;
 }
 *{box-sizing:border-box}
@@ -50,14 +50,15 @@ button,input{font:inherit;color:inherit}
 .main,.side{display:flex;flex-direction:column;gap:12px;min-width:0}
 
 /* stage */
-.stage{position:relative;height:clamp(320px,56vh,560px);border-radius:14px;overflow:hidden;background:#2f6b35;border:1px solid var(--line)}
-#cv{display:block;width:100%;height:100%}
+.stage{position:relative;height:clamp(320px,56vh,560px);border-radius:14px;overflow:hidden;background:linear-gradient(#5d93cc,#cfdde6 60%,#8f959b 61%);border:1px solid var(--line)}
+#gl,#cv{position:absolute;inset:0;display:block;width:100%;height:100%}
+#cv{pointer-events:none}
 .hud{position:absolute;inset:12px 12px auto;display:flex;flex-direction:column;align-items:center;pointer-events:none;text-align:center}
 .mult{font-family:var(--num);font-weight:800;font-size:clamp(56px,9vw,104px);line-height:.95;font-variant-numeric:tabular-nums;color:#fff8ea;text-shadow:0 3px 0 rgba(0,0,0,.35),0 0 32px rgba(0,0,0,.5);transition:color .3s}
 .mult.hot1{color:#ffeec4}.mult.hot2{color:#ffd77a}.mult.hot3{color:#8ff0a9}
 .mult.ended{color:var(--dust)}
 .mult.count{font-size:clamp(44px,7vw,78px)}
-.phase{margin-top:6px;font-weight:700;font-stretch:80%;font-size:13px;letter-spacing:.04em;background:rgba(12,18,14,.66);padding:4px 12px;border-radius:99px}
+.phase{margin-top:6px;font-weight:700;font-stretch:80%;font-size:13px;letter-spacing:.04em;background:rgba(10,15,24,.7);padding:4px 12px;border-radius:99px}
 .bar{width:min(240px,60%);height:4px;margin-top:8px;background:rgba(0,0,0,.4);border-radius:4px;overflow:hidden}
 .bar i{display:block;height:100%;background:var(--dust);transform-origin:left}
 .toast{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);max-width:calc(100% - 32px);padding:9px 16px;border-radius:10px;font-weight:800;font-stretch:85%;font-size:15px;text-align:center;box-shadow:0 8px 24px rgba(0,0,0,.35);animation:rise .25s ease-out}
@@ -75,7 +76,7 @@ button,input{font:inherit;color:inherit}
 .car-card[aria-pressed="true"]{border-color:var(--c);background:color-mix(in srgb,var(--c) 13%,var(--panel))}
 .car-card:disabled{cursor:default}
 .car-card.dead .mini{opacity:.4;filter:grayscale(.6)}
-.mini{width:24px;height:42px;flex:none}
+.mini{width:24px;height:46px;flex:none}
 .cc-body{min-width:0;flex:1}
 .cc-name{font-weight:800;font-stretch:82%;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cc-num{font-family:var(--num);color:var(--c);font-weight:700;margin-left:4px}

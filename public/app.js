@@ -1,12 +1,13 @@
 // Gravel Rush — კლიენტი. შედეგებს არ ითვლის: სერვერისგან იღებს მდგომარეობას და ხატავს.
 import { G, CARS as N_CARS } from './shared/math.js';
 import { sha256, resultsFromSeed, verifyChain } from './shared/verify.js';
+import { createScene3D, paintCar } from './scene3d.js';
 
 const $ = s => document.querySelector(s);
 const CARS = [
-  { name: 'ფალკონი', num: '07', color: '#e8352b', dark: '#8c1a14', accent: '#ffffff' },
-  { name: 'ტალღა',   num: '21', color: '#1f6fff', dark: '#0d3a91', accent: '#9fe3ff' },
-  { name: 'კრაზანა', num: '44', color: '#f5c518', dark: '#9c7a05', accent: '#141414' }
+  { name: 'ფალკონი', num: '07', color: '#e0321f', dark: '#8c1a14', accent: '#ffffff', stripe: '#ffffff', helmet: '#f4f4f4' },
+  { name: 'ტალღა',   num: '21', color: '#2f6fe0', dark: '#0d3a91', accent: '#ffd23f', stripe: '#ffd23f', helmet: '#ffd23f' },
+  { name: 'კრაზანა', num: '44', color: '#f2c230', dark: '#9c7a05', accent: '#141414', stripe: '#141414', helmet: '#1c1c1c' }
 ];
 const LEADS = [0, 16, -12];
 const REDUCE = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -107,6 +108,7 @@ function resetRound(round) {
 
 /* ---------- გეომეტრია ---------- */
 const cv = $('#cv'), ctx = cv.getContext('2d');
+let G3 = null;
 let W = 0, H = 0, Sc = 1, roadW = 0, laneGap = 0, amp = 0, baseY = 0, L = 0, CW = 0;
 function resize() {
   const r = $('#stage').getBoundingClientRect(), dpr = Math.min(2, devicePixelRatio || 1);
@@ -117,6 +119,7 @@ function resize() {
   roadW = Math.max(220, Math.min(W * .6, 380));
   laneGap = roadW * .29; amp = Math.min(W * .09, 70);
   baseY = H * .72; L = 46 * Sc; CW = 23 * Sc;
+  if (G3) G3.resize(W, H);
 }
 const rnd = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
 const cx = d => W / 2 + amp * Math.sin(d * .0021) + amp * .6 * Math.sin(d * .0057 + 1.3);
@@ -141,7 +144,7 @@ function endCarLocal(c, sc) {
   if (c.type === 'crash') {
     c.spinV = (Math.random() < .5 ? -1 : 1) * (2.5 + Math.random() * 1.5);
     const rd = vd + L * .55 + c.v * .1;
-    c.rock = { d: rd, x: laneX(c.i, rd), kind: Math.random() < .55 ? 'tires' : 'cones', seed: Math.random() * 100 };
+    c.rock = { d: rd, x: laneX(c.i, rd), i: c.i, kind: Math.random() < .55 ? 'tires' : 'cones', seed: Math.random() * 100 };
     rocks.push(c.rock);
     burst(c, vd);
     S.shake = Math.max(S.shake, S.me?.bet?.car === c.i ? 12 : 5);
@@ -479,17 +482,17 @@ function hud(now) {
   if (S.phase === 'bet') {
     const rem = Math.max(0, (S.rules.betMs - (serverNow() - S.phaseStart)) / 1000);
     setT(multEl, rem.toFixed(1)); setC(multEl, 'mult count');
-    setT(phaseEl, `SS ${S.round} · ფსონების მიღება · სტარტამდე`);
+    setT(phaseEl, `რბოლა #${S.round} · ფსონების მიღება · სტარტამდე`);
     barEl.hidden = false; barFill.style.transform = `scaleX(${Math.min(1, rem * 1000 / S.rules.betMs)})`;
   } else if (S.phase === 'race') {
     const m = currentMult();
     setT(multEl, m.toFixed(2) + '×');
     setC(multEl, 'mult' + (m >= 10 ? ' hot3' : m >= 3 ? ' hot2' : m >= 1.5 ? ' hot1' : ''));
-    setT(phaseEl, `SS ${S.round} · გზაზე ${S.cars.filter(c => !c.ended).length} / 3`);
+    setT(phaseEl, `რბოლა #${S.round} · ტრასაზე ${S.cars.filter(c => !c.ended).length} / 3`);
     barEl.hidden = true;
   } else if (S.phase === 'end') {
     setT(multEl, currentMult().toFixed(2) + '×'); setC(multEl, 'mult ended');
-    setT(phaseEl, `SS ${S.round} · ფინიში — შემდეგი ეტაპი მალე`);
+    setT(phaseEl, `რბოლა #${S.round} · ფინიში — შემდეგი რბოლა მალე`);
     barEl.hidden = true;
   } else {
     setT(multEl, '—'); setC(multEl, 'mult count');
@@ -514,10 +517,10 @@ function updateAction(force) {
     if (b && b.state === 'open') { const m = currentMult(); cls = 'cash'; main = `ქეშაუთი ${fmt(Math.floor(b.amount * Math.floor(m * 100) / 100))}`; sub = `×${m.toFixed(2)} · ${CARS[b.car].name}`; }
     else if (b && b.state === 'won') { cls = 'won'; dis = true; main = `+${fmt(b.win)}`; sub = `აიღე ×${x100(b.m100)}-ზე`; }
     else if (b) { cls = 'lost'; dis = true; main = 'ფსონი დაიწვა'; sub = `${CARS[b.car].name} ${S.cars[b.car].type === 'crash' ? 'დაეჯახა' : 'გაჩერდა'}`; }
-    else { cls = 'wait'; dis = true; main = 'ეტაპი მიმდინარეობს'; sub = 'ფსონს შემდეგ ეტაპზე დადებ'; }
+    else { cls = 'wait'; dis = true; main = 'რბოლა მიმდინარეობს'; sub = 'ფსონს შემდეგ რბოლაზე დადებ'; }
   } else {
-    cls = 'wait'; dis = true; main = 'შემდეგი ეტაპი მზადდება…';
-    sub = b ? (b.state === 'won' ? `ამ ეტაპზე მოგება +${fmt(b.win)}` : 'ამჯერად არ გაგიმართლა') : 'აირჩიე მანქანა ქვემოთ';
+    cls = 'wait'; dis = true; main = 'შემდეგი რბოლა მზადდება…';
+    sub = b ? (b.state === 'won' ? `ამ რბოლაზე მოგება +${fmt(b.win)}` : 'ამჯერად არ გაგიმართლა') : 'აირჩიე ბოლიდი ქვემოთ';
   }
   const key = cls + main + sub;
   if (!force && key === actKey) return;
@@ -551,12 +554,16 @@ function updateBal() {
   $('#refill').hidden = !S.me || S.me.balance >= 1000;
 }
 
-function mini(c) {
-  const body = 'M10 1.5Q13 .6 16 1.5C20.5 2.3 23 6 23 10.5C23 14 21 15.5 21 18.5C21 22 24 24 24 29.5C24 34 22 36 19.5 36H6.5C4 36 2 34 2 29.5C2 24 5 22 5 18.5C5 15.5 3 14 3 10.5C3 6 5.5 2.3 10 1.5Z';
-  return `<svg class="mini" viewBox="0 0 26 40" aria-hidden="true"><g fill="#0b0b0b"><rect x="1.5" y="5.5" width="4.5" height="7" rx="1"/><rect x="20" y="5.5" width="4.5" height="7" rx="1"/><rect x="0.5" y="24" width="5.5" height="7.5" rx="1"/><rect x="20" y="24" width="5.5" height="7.5" rx="1"/></g><path d="${body}" fill="${c.color}"/><path d="M10.2 1.2h1.8v35h-1.8zM14 1.2h1.8v35H14z" fill="${c.accent}"/><path d="M6 14.5C7 10 19 10 20 14.5C21 19 19.5 22.5 17 23.5H9C6.5 22.5 5 19 6 14.5Z" fill="#0f1a25"/><rect x="8.5" y="25.5" width="9" height="5" rx="1" fill="#fff"/><text x="13" y="29.6" text-anchor="middle" font-size="5" font-weight="800" font-family="Saira Condensed, sans-serif" fill="#111">${c.num}</text><rect x="0.5" y="34.5" width="25" height="3" rx="1" fill="#121212"/><path d="M5 4.5 8.5 2.5M21 4.5 17.5 2.5" stroke="#eaf7ff" stroke-width="1.1" stroke-linecap="round"/></svg>`;
+const mini = i => `<canvas class="mini" id="mini${i}" aria-hidden="true"></canvas>`;
+function drawMinis() {
+  const d = Math.min(3, (devicePixelRatio || 1) * 1.5);
+  CARS.forEach((c, i) => {
+    const el = $('#mini' + i); el.width = 24 * d; el.height = 46 * d;
+    const x = el.getContext('2d'); x.scale(d, d); x.translate(12, 23); paintCar(x, c, 21, 44);
+  });
 }
 const carsEl = $('#cars');
-carsEl.innerHTML = CARS.map((c, i) => `<button class="car-card" type="button" id="car${i}" data-i="${i}" style="--c:${c.color}" aria-pressed="false">${mini(c)}<div class="cc-body"><div class="cc-name">${c.name}<span class="cc-num">#${c.num}</span></div><div class="cc-status" id="st${i}"></div></div><div class="cc-bets"><b id="cb${i}">0</b><small>ფსონი</small></div></button>`).join('');
+carsEl.innerHTML = CARS.map((c, i) => `<button class="car-card" type="button" id="car${i}" data-i="${i}" style="--c:${c.color}" aria-pressed="false">${mini(i)}<div class="cc-body"><div class="cc-name">${c.name}<span class="cc-num">#${c.num}</span></div><div class="cc-status" id="st${i}"></div></div><div class="cc-bets"><b id="cb${i}">0</b><small>ფსონი</small></div></button>`).join('');
 carsEl.addEventListener('click', e => { const b = e.target.closest('.car-card'); if (b) pick(+b.dataset.i); });
 function pick(i) { if (S.phase === 'bet' && !S.me?.bet) { S.sel = i; renderCards(); updateAction(true); } }
 function renderCards() {
@@ -579,7 +586,7 @@ function renderFeed() {
   const total = rows.reduce((s, r) => s + r.amount, 0);
   $('#feedSum').innerHTML = `${fmt(total)} <small>· ${rows.length} მოთამაშე</small>`;
   const ul = $('#feed');
-  if (!rows.length) { ul.innerHTML = '<li class="feed-empty">ამ ეტაპზე ფსონი ჯერ არავის დაუდია.</li>'; return; }
+  if (!rows.length) { ul.innerHTML = '<li class="feed-empty">ამ რბოლაზე ფსონი ჯერ არავის დაუდია.</li>'; return; }
   ul.innerHTML = rows.map(r => {
     let out = S.phase === 'bet' ? '' : '…', oc = '';
     if (r.state === 'won') { out = `×${x100(r.m100)} +${fmt(r.win)}`; oc = 'won'; }
@@ -588,7 +595,7 @@ function renderFeed() {
   }).join('');
 }
 function renderHistory() {
-  $('#history').innerHTML = S.history.map(r => `<button type="button" class="h-round" data-round="${r.round}" title="SS ${r.round} — დააჭირე შესამოწმებლად">${r.results.map((x, i) => `<span class="h-chip ${x.crash100 >= 1000 ? 'hi' : x.crash100 < 200 ? 'lo' : ''}" style="--c:${CARS[i].color}"><i></i>${x100(x.crash100)}<em>${x.type === 'crash' ? '✕' : '■'}</em></span>`).join('')}</button>`).join('');
+  $('#history').innerHTML = S.history.map(r => `<button type="button" class="h-round" data-round="${r.round}" title="რბოლა #${r.round} — დააჭირე შესამოწმებლად">${r.results.map((x, i) => `<span class="h-chip ${x.crash100 >= 1000 ? 'hi' : x.crash100 < 200 ? 'lo' : ''}" style="--c:${CARS[i].color}"><i></i>${x100(x.crash100)}<em>${x.type === 'crash' ? '✕' : '■'}</em></span>`).join('')}</button>`).join('');
 }
 
 /* ---------- სამართლიანობის შემოწმება ---------- */
@@ -649,13 +656,44 @@ document.addEventListener('keydown', e => {
   const k = ['Digit1', 'Digit2', 'Digit3'].indexOf(e.code); if (k >= 0) pick(k);
 });
 
+/* ---------- 3D ---------- */
+function labels3(now) {
+  ctx.clearRect(0, 0, W, H);
+  const myBet = S.me?.bet, mine = myBet ? myBet.car : (S.phase === 'bet' ? S.sel : -1);
+  for (const c of S.cars) {
+    const p = G3.project(c, now); if (!p || p.y < -20 || p.y > H + 20) continue;
+    const ly = p.y - 12 * Sc;
+    if (c.ended) pill(`${c.type === 'crash' ? 'დაეჯახა' : 'გაჩერდა'} ×${x100(c.crash100)}`, p.x, ly, c.type === 'crash' ? '#ff5d52' : '#e3bd72', '#1a0f08');
+    else if (myBet && myBet.car === c.i && myBet.state === 'won') pill(`+${fmt(myBet.win)}`, p.x, ly, '#4fd67a', '#062010');
+    else if (c.i === mine) pill(myBet ? 'შენ' : 'არჩეული', p.x, ly, 'rgba(10,15,24,.86)', '#fff8ea');
+  }
+}
+function start3D() {
+  try {
+    G3 = createScene3D({
+      canvas: $('#gl'), S, parts, rocks, CARS, visD, cx, REDUCE,
+      dims: () => ({ W, H, Sc, laneGap }),
+      mine: () => S.me?.bet ? S.me.bet.car : (S.phase === 'bet' ? S.sel : -1),
+      betRemaining: () => S.rules.betMs - (serverNow() - S.phaseStart)
+    });
+  } catch (e) { console.error(e); G3 = null; }
+  if (G3) G3.resize(W, H); else $('#gl').hidden = true;
+}
+
 /* ---------- ციკლი ---------- */
 new ResizeObserver(resize).observe($('#stage'));
-resize(); resetRound(0); renderCards(); renderFeed(); connect();
+resize(); resetRound(0); start3D(); drawMinis(); renderCards(); renderFeed(); connect();
+document.fonts?.ready.then(drawMinis);
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(.05, Math.max(0, (now - last) / 1000)); last = now;
-  physics(dt, now); draw(now); hud(now);
+  physics(dt, now);
+  if (G3) {
+    try { G3.render(now, dt); labels3(now); }
+    catch (e) { console.error(e); G3 = null; $('#gl').hidden = true; }
+  }
+  if (!G3) draw(now);
+  hud(now);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

@@ -1,7 +1,7 @@
 // ფსონის პანელების ლოგიკა (public/shared/slip.js): სამი დამოუკიდებელი პანელი — თითო ბოლიდზე.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { slipState, commandFor, queuedBets, stepAmount, payoutNow } from '../public/shared/slip.js';
+import { slipState, commandFor, queuedBets, stepAmount, chipAmount, CHIPS, payoutNow } from '../public/shared/slip.js';
 
 const running = () => [0, 1, 2].map(() => ({ ended: false }));
 const stakes = () => [{ amount: 500, auto: null }, { amount: 1000, auto: 200 }, { amount: 2500, auto: null }];
@@ -86,6 +86,14 @@ test('−/+ თანხის კიბე: 1 2 5 10 20 50 100 200 500 1000, �
   assert.equal(stepAmount(100, -1), 100);
   assert.equal(stepAmount(100000, +1), 100000);
   assert.equal(stepAmount(50000, +1, 100, 60000), 60000, 'ზედა ზღვარი (მაგ. ბალანსი)');
+});
+
+test('სწრაფი თანხები: 10 50 100 250, ბალანსის და ფსონის ზღვრებით', () => {
+  assert.deepEqual(CHIPS, [10, 50, 100, 250]);
+  assert.equal(chipAmount(50), 5000);
+  assert.equal(chipAmount(250, 100, 100000), 25000);
+  assert.equal(chipAmount(250, 100, 12345), 12345, 'ბალანსზე მეტს არ დებს');
+  assert.equal(chipAmount(10, 100, 50), 100, 'მინიმუმზე ნაკლები — არა');
 });
 
 test('მოგება ახლა მოგების ზღვრით', () => {

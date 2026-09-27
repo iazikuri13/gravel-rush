@@ -68,3 +68,9 @@ export function stepAmount(cents, dir, min = 100, max = 100000) {
   const next = dir > 0 ? steps.find(c => c > cents) : [...steps].reverse().find(c => c < cents);
   return Math.max(min, Math.min(max, next ?? (dir > 0 ? max : min)));
 }
+
+// სწრაფი თანხები (ვალუტის ერთეულებში)
+export const CHIPS = [10, 50, 100, 250];
+
+/** სწრაფი თანხის ღილაკი: თანხა ცენტებში, ზღვრებით [min, max] (მაგ. max = ბალანსი) */
+export const chipAmount = (units, min = 100, max = 100000) => Math.max(min, Math.min(max, Math.round(units * 100)));

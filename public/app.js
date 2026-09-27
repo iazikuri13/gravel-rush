@@ -2,7 +2,7 @@
 import { G, CARS as N_CARS } from './shared/math.js';
 import { sha256, resultsFromSeed, verifyChain } from './shared/verify.js';
 import { createScene3D, paintCar } from './scene3d.js';
-import { slipState, commandFor, queuedBets, stepAmount } from './shared/slip.js';
+import { slipState, commandFor, queuedBets, stepAmount, chipAmount, CHIPS } from './shared/slip.js';
 
 const $ = s => document.querySelector(s);
 const CARS = [
@@ -571,7 +571,10 @@ slipsEl.innerHTML = CARS.map((c, i) => `
       </div>
       <button class="sl-btn" type="button" id="sb${i}" data-i="${i}"><span class="b-main"></span><span class="b-sub"></span></button>
     </div>
+    <div class="sl-chips">${CHIPS.map(v => `<button class="chip" type="button" data-v="${v}" data-i="${i}" aria-label="${c.name}: ფსონი ${v}">${v}</button>`).join('')}</div>
   </div>`).join('');
+/** ფსონის ზღვრები ცენტებში: [მინიმუმი, მაქსიმუმი — ბალანსის ჩათვლით] */
+const betLimits = () => [S.rules.minBet ?? 100, Math.min(S.rules.maxBet ?? 100000, S.me ? Math.max(100, S.me.balance) : 100000)];
 const field = (i, f) => slipsEl.querySelector(`[data-f="${f}"][data-i="${i}"]`);
 const wasEditable = [null, null, null];
 function fillInputs(i) {
@@ -584,11 +587,11 @@ slipsEl.addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   const i = +b.dataset.i;
   if (b.classList.contains('sl-btn')) return carCmd(i);
-  if (b.dataset.d) {
-    const max = Math.min(S.rules.maxBet ?? 100000, S.me ? Math.max(100, S.me.balance) : 100000);
-    slips[i].amt = stepAmount(Math.round(slips[i].amt * 100), +b.dataset.d, S.rules.minBet ?? 100, max) / 100;
-    saveSlips(); fillInputs(i); renderSlips();
-  }
+  const [min, max] = betLimits();
+  if (b.dataset.d) slips[i].amt = stepAmount(Math.round(slips[i].amt * 100), +b.dataset.d, min, max) / 100;
+  else if (b.dataset.v) slips[i].amt = chipAmount(+b.dataset.v, min, max) / 100;
+  else return;
+  saveSlips(); fillInputs(i); renderSlips();
 });
 slipsEl.addEventListener('input', e => {
   const f = e.target.dataset.f, i = +e.target.dataset.i; if (!f) return;
@@ -626,11 +629,13 @@ function renderSlips() {
     btn.disabled = !s.cmd;
     setT(btn.firstChild, main); setT(btn.lastChild, sub);
     const r = $('#sr' + i); setT(r, res);
+    const amt = Math.round(slips[i].amt * 100);
+    slipsEl.querySelectorAll(`.chip[data-i="${i}"]`).forEach(b => b.classList.toggle('on', s.editable && +b.dataset.v * 100 === amt));
     setC(r, `sl-res${s.st === 'won' ? ' won' : s.st === 'lost' ? ' lost' : ''}`);
     if (wasEditable[i] !== s.editable) {
       wasEditable[i] = s.editable;
       for (const f of ['amt', 'autoOn', 'auto']) field(i, f).disabled = !s.editable;
-      slipsEl.querySelectorAll(`.step[data-i="${i}"]`).forEach(b => { b.disabled = !s.editable; });
+      slipsEl.querySelectorAll(`.step[data-i="${i}"], .chip[data-i="${i}"]`).forEach(b => { b.disabled = !s.editable; });
       // დადებული ფსონის თანხა ჩანს ველში; რედაქტირება — საკუთარი მნიშვნელობით
       if (s.editable || !myBet(i)) fillInputs(i);
       else field(i, 'amt').value = String(myBet(i).amount / 100);

@@ -1,5 +1,6 @@
 // Gravel Rush — კლიენტი. შედეგებს არ ითვლის: სერვერისგან იღებს მდგომარეობას და ხატავს.
-import { G, CARS as N_CARS } from './shared/math.js';
+import { G, CARS as N_CARS, timeFor } from './shared/math.js';
+import { racePlan, leadAt, seedFrom, GRID } from './shared/overtake.js';
 import { sha256, resultsFromSeed, verifyChain } from './shared/verify.js';
 import { createScene3D, paintCar } from './scene3d.js';
 import { slipState, commandFor, queuedBets, stepAmount, chipAmount, CHIPS } from './shared/slip.js';
@@ -10,7 +11,6 @@ const CARS = [
   { name: 'ტალღა',   num: '21', color: '#2f6fe0', dark: '#0d3a91', accent: '#ffd23f', stripe: '#ffd23f', helmet: '#ffd23f' },
   { name: 'კრაზანა', num: '44', color: '#f2c230', dark: '#9c7a05', accent: '#141414', stripe: '#141414', helmet: '#1c1c1c' }
 ];
-const LEADS = [0, 16, -12];
 const REDUCE = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const fmt = cents => (cents / 100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 const x100 = m100 => (m100 / 100).toFixed(2);
@@ -98,6 +98,9 @@ function applySnap(s) {
   if (s.round !== S.round || !S.cars.length) resetRound(s.round);
   S.phase = s.phase; S.phaseStart = s.phaseStart; S.raceStart = s.raceStart;
   S.roundHash = s.roundHash; S.online = s.online; S.bets = s.bets;
+  // გასწრებების გეგმა რაუნდის ჰეშიდან — ყველა მოთამაშე ერთსა და იმავეს ხედავს
+  const seedKey = s.roundHash || 'round-' + s.round;
+  if (S.planKey !== seedKey) { S.planKey = seedKey; S.plan = racePlan(seedFrom(seedKey)); }
   $('#fRoundHash').textContent = s.roundHash || '—';
   $('#online').textContent = String(s.online);
   s.cars.forEach((sc, i) => { const c = S.cars[i]; if (sc.ended && !c.ended) endCarLocal(c, sc); });
@@ -136,7 +139,9 @@ const myBets = () => [0, 1, 2].map(i => { const b = S.me?.bets?.[i]; return b &&
 const myBet = car => myBets()[car];
 const mineCars = () => myBets().flatMap((b, i) => (b ? [i] : []));
 const raceT = () => Math.max(0, (serverNow() - S.raceStart) / 1000);
-const visD = (c, now) => c.d + LEADS[c.i] * Sc + (!c.ended && S.phase === 'race' ? Math.sin(now / 1000 * 1.7 + c.i * 2.1) * 6 * Sc : 0);
+/** ბოლიდის ვიზუალური წინსვლა (ბოლიდის სიგრძეებში): გასწრებები რბოლისას, გაჩერებულზე — გაყინული */
+const leadOf = c => (c.ended ? c.lead : S.phase === 'race' && S.plan ? leadAt(S.plan, c.i, raceT()) : GRID[c.i]);
+const visD = (c, now) => c.d + leadOf(c) * L + (!c.ended && S.phase === 'race' ? Math.sin(now / 1000 * 1.7 + c.i * 2.1) * 6 * Sc : 0);
 const carX = (c, d) => laneX(c.i, d) + c.drift;
 
 function currentMult() {
@@ -148,6 +153,8 @@ function currentMult() {
 /* ---------- ფიზიკა და ნაწილაკები ---------- */
 function P(o) { if (parts.length < 520) parts.push(Object.assign({ vx: 0, vd: 0, dr: 2, r: 3, g: 0, a: .5, k: 'dust', rot: 0, vr: 0 }, o, { max: o.life })); }
 function endCarLocal(c, sc) {
+  // ადგილი, სადაც ბოლიდი მისი დასრულების მომენტში იყო (კოეფიციენტიდან — ყველასთან ერთნაირად)
+  c.lead = S.plan ? leadAt(S.plan, c.i, timeFor(sc.crash100 / 100)) : GRID[c.i];
   c.ended = true; c.crash100 = sc.crash100; c.type = sc.type;
   const now = performance.now(), vd = visD(c, now);
   if (c.type === 'crash') {
@@ -178,7 +185,7 @@ function physics(dt, now) {
     else if (c.type === 'crash') { c.v *= Math.exp(-dt * 7); c.spin += c.spinV * dt; c.spinV *= Math.exp(-dt * 2.5); }
     else { c.v *= Math.exp(-dt * 1.4); c.drift += (c.driftTo - c.drift) * Math.min(1, dt * 1.5); }
     c.d += c.v * dt;
-    if (c.rock) c.d = Math.min(c.d, c.rock.d - L * .58 - LEADS[c.i] * Sc);
+    if (c.rock) c.d = Math.min(c.d, c.rock.d - L * .58 - c.lead * L);
     const vd = visD(c, now), x = carX(c, vd);
     if (c.v > 15 * Sc) {
       // ასფალტზე — მსუბუქი საბურავის კვამლი/ჰაერის ნაკადი
@@ -440,7 +447,7 @@ function draw(now) {
   }
   // სასტარტო ბადე + ჭადრაკული ხაზი
   for (let i = 0; i < 3; i++) {
-    const gd = LEADS[i] * Sc - L * .62, gx = laneX(i, gd), gy = sy(gd), bw = CW * .85;
+    const gd = GRID[i] * L - L * .62, gx = laneX(i, gd), gy = sy(gd), bw = CW * .85;
     ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 2 * Sc;
     ctx.beginPath(); ctx.moveTo(gx - bw, gy - 10 * Sc); ctx.lineTo(gx - bw, gy); ctx.lineTo(gx + bw, gy); ctx.lineTo(gx + bw, gy - 10 * Sc); ctx.stroke();
   }

@@ -55,7 +55,7 @@ describe('Wallet: კაზინოს მოთამაშე', () => {
     assert.equal(me.balance, 7500);
     assert.equal(ext.calls[0].kind, 'bet');
     assert.equal(ext.calls[0].roundId, '1');
-    await assert.rejects(w.placeBet(token, { car: 0, amount: 100 }), /უკვე დადებული/);
+    await assert.rejects(w.placeBet(token, { car: 1, amount: 100 }), /ამ ბოლიდზე ფსონი უკვე დადებული/);
     const { token: t2 } = await w.join({ session: 'cd'.repeat(24) });   // იგივე მოთამაშე (ყალბი session() ერთს აბრუნებს)
     assert.equal(t2, token);
   });
@@ -64,9 +64,26 @@ describe('Wallet: კაზინოს მოთამაშე', () => {
     const { token } = await w.join({ session: SESSION });
     await w.placeBet(token, { car: 0, amount: 1000 });
     const me = await w.cancelBet(token);
-    assert.equal(me.balance, 10000); assert.equal(me.bet, null);
+    assert.equal(me.balance, 10000); assert.deepEqual(me.bets, [null, null, null]);
     const [bet, rb] = ext.calls;
     assert.equal(rb.kind, 'rollback'); assert.equal(rb.ref, bet.id); assert.equal(rb.amount, 1000);
+  });
+
+  it('სამი ფსონი კაზინოს სამ ცალკე BET-ად მიდის; გაუქმება — მხოლოდ თავისი ბოლიდის ROLLBACK', async () => {
+    const { token } = await w.join({ session: SESSION });
+    await w.placeBet(token, { car: 0, amount: 1000 });
+    await w.placeBet(token, { car: 1, amount: 2000 });
+    const me = await w.placeBet(token, { car: 2, amount: 3000 });
+    assert.equal(me.balance, 10000 - 6000);
+    const bets = ext.calls.filter(c => c.kind === 'bet');
+    assert.equal(bets.length, 3);
+    assert.equal(new Set(bets.map(b => b.id)).size, 3, 'თითო ფსონს საკუთარი tx id');
+    const after = await w.cancelBet(token, 1);
+    assert.equal(after.balance, 10000 - 4000);
+    const rb = ext.calls.filter(c => c.kind === 'rollback');
+    assert.equal(rb.length, 1);
+    assert.equal(rb[0].ref, bets[1].id);
+    assert.equal(rb[0].amount, 2000);
   });
 
   it('მოგება კაზინოს ერთხელ მიდის, მაშინაც კი, თუ კავშირი რამდენჯერმე გაწყდა', async () => {

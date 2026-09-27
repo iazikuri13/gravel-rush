@@ -119,6 +119,48 @@ describe('ფსონების სერვისი (ყალბი რა
     assert.deepEqual(settled(small)[0].result, { state: 'won', car: 0, m100: 50000, win: 50000, amount: 100 });
   });
 
+  it('სამი ფსონი: თითო ბოლიდზე; მეოთხე და იმავე ბოლიდზე — 409; თითოეული ცალკე სწორდება', async () => {
+    const { token } = await api.post('/players', {});
+    await api.post('/bets', { token, car: 0, amount: 1000, auto: 150 });
+    await api.post('/bets', { token, car: 1, amount: 2000 });
+    const me = await api.post('/bets', { token, car: 2, amount: 3000, auto: 400 });
+    assert.equal(me.balance, 100000 - 6000);
+    assert.deepEqual(me.bets.map(b => [b.car, b.amount, b.auto]), [[0, 1000, 150], [1, 2000, null], [2, 3000, 400]]);
+    await assert.rejects(api.post('/bets', { token, car: 1, amount: 100 }), e => e.status === 409);
+    assert.equal((await api.get('/bets/current')).bets.length, 3);
+    round.race();
+    round.carEnded(0, 200);     // ავტო ×1.5 ≤ ×2.00 → მოგება
+    round.carEnded(2, 300);     // ავტო ×4 > ×3.00 → წაგება
+    await until(() => settled(token).length === 2);
+    const byCar = c => settled(token).find(e => e.result.car === c).result;
+    assert.equal(byCar(0).state, 'won'); assert.equal(byCar(0).win, payout(1000, 150));
+    assert.equal(byCar(2).state, 'lost');
+    const now = await api.get(`/players/${token}`);
+    assert.deepEqual(now.bets.map(b => b.state), ['won', 'open', 'lost']);
+    // ხელით ქეშაუთი დარჩენილ ბოლიდზე — ბოლიდის მითითებით
+    round.checkFn = () => ({ ok: true, m100: 250 });
+    const cashed = await api.post(`/bets/${token}/1/cashout`);
+    assert.equal(cashed.bets[1].state, 'won'); assert.equal(cashed.bets[1].m100, 250);
+    assert.equal(cashed.balance, 100000 - 6000 + payout(1000, 150) + payout(2000, 250));
+    assert.deepEqual(round.checks.at(-1), { round: 1, car: 1 });
+  });
+
+  it('გაუქმება ბოლიდის მიხედვით; ბოლიდის გარეშე — მხოლოდ ერთადერთი ფსონისთვის', async () => {
+    const { token } = await api.post('/players', {});
+    await api.post('/bets', { token, car: 0, amount: 500 });
+    await api.post('/bets', { token, car: 2, amount: 700 });
+    await assert.rejects(api.del(`/bets/${token}`), e => e.status === 400);
+    const me = await api.del(`/bets/${token}/2`);
+    assert.equal(me.balance, 100000 - 500);
+    assert.deepEqual(me.bets.map(b => b?.car ?? null), [0, null, null]);
+    await assert.rejects(api.del(`/bets/${token}/2`), e => e.status === 409);
+    await assert.rejects(api.del(`/bets/${token}/5`), e => e.status === 400);
+    const last = await api.del(`/bets/${token}`);        // დარჩა ერთი — ბოლიდის გარეშეც იცის
+    assert.equal(last.balance, 100000);
+    const ledger = readFileSync(join(dir, 'ledger.jsonl'), 'utf8').trim().split('\n').map(l => JSON.parse(l)).filter(e => e.type === 'cancel');
+    assert.deepEqual(ledger.map(e => e.car), [2, 0]);
+  });
+
   it('ხელით ქეშაუთი: რაუნდის სერვისი ადასტურებს და ადგენს კოეფიციენტს', async () => {
     const { token } = await api.post('/players', {});
     await api.post('/bets', { token, car: 0, amount: 2000 });
@@ -126,7 +168,7 @@ describe('ფსონების სერვისი (ყალბი რა
     await until(() => svc.wallet.state?.phase === 'race');
     round.checkFn = () => ({ ok: true, m100: 173 });
     const me = await api.post(`/bets/${token}/cashout`);
-    assert.equal(me.bet.state, 'won'); assert.equal(me.bet.m100, 173);
+    assert.equal(me.bets[0].state, 'won'); assert.equal(me.bets[0].m100, 173);
     assert.equal(me.balance, 100000 - 2000 + payout(2000, 173));
     assert.deepEqual(round.checks.at(-1), { round: 1, car: 0 });
     await assert.rejects(api.post(`/bets/${token}/cashout`), e => e.status === 409);
@@ -143,7 +185,7 @@ describe('ფსონების სერვისი (ყალბი რა
     await sleep(40);
     round.carEnded(2, 200);            // გაჩერება მოდის, სანამ check-ის პასუხი გზაშია
     const me = await pending;
-    assert.equal(me.bet.state, 'won'); assert.equal(me.bet.m100, 199);
+    assert.equal(me.bets[2].state, 'won'); assert.equal(me.bets[2].m100, 199);
     await sleep(50);
     assert.equal(settled(token).length, 1);
     assert.equal(ledger().filter(e => e.token === token && (e.type === 'win' || e.type === 'lose')).length, 1);
@@ -171,7 +213,7 @@ describe('ფსონების სერვისი (ყალბი რა
     await until(() => svc.wallet.state?.phase === 'race');
     round.down = true;
     await assert.rejects(api.post(`/bets/${token}/cashout`), e => e.status === 503);
-    assert.equal((await api.get(`/players/${token}`)).bet.state, 'open');
+    assert.equal((await api.get(`/players/${token}`)).bets[0].state, 'open');
     round.carEnded(0, 500);
     await until(() => settled(token).length === 1);
     assert.equal(settled(token)[0].result.state, 'won');
@@ -192,7 +234,7 @@ describe('ფსონების სერვისი (ყალბი რა
     const { token } = await api.post('/players', {});
     await api.post('/bets', { token, car: 0, amount: 700 });
     const me = await api.del(`/bets/${token}`);
-    assert.equal(me.balance, 100000); assert.equal(me.bet, null);
+    assert.equal(me.balance, 100000); assert.deepEqual(me.bets, [null, null, null]);
     await api.post('/bets', { token, car: 0, amount: 700 });
     round.race();
     await assert.rejects(api.del(`/bets/${token}`), e => e.status === 409);
@@ -208,19 +250,19 @@ describe('ფსონების სერვისი (ყალბი რა
     round.newRound(2);
     await until(() => svc.wallet.state?.round === 2);
     assert.deepEqual(await api.get('/bets/current'), { round: 2, bets: [] });
-    assert.equal((await api.get(`/players/${token}`)).bet, null);
+    assert.deepEqual((await api.get(`/players/${token}`)).bets, [null, null, null]);
   });
 
   it('ახალი რაუნდი ფსონის მქონე მოთამაშეს უგზავნის განახლებულ me-ს (bet: null)', async () => {
     const { token } = await api.post('/players', { name: 'ნინო' });
     const me = await api.post('/bets', { token, car: 1, amount: 500 });
-    assert.equal(me.bet.round, 1);
+    assert.equal(me.bets[1].round, 1);
     round.race(); round.carEnded(1, 100); round.end();
     await until(() => settled(token).length === 1);
     round.newRound(2);
     await until(() => events.some(e => e.event === 'me_changed' && e.token === token));
     const ev = events.find(e => e.event === 'me_changed' && e.token === token);
-    assert.equal(ev.me.bet, null);
+    assert.deepEqual(ev.me.bets, [null, null, null]);
     assert.equal(ev.me.balance, 100000 - 500);
   });
 

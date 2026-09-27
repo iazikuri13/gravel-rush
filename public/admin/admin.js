@@ -172,7 +172,7 @@
     const q = $('#playerSearch').value.trim().toLowerCase();
     const list = playersCache.filter(p => !q || [p.name, p.pid, p.platform, p.playerId, p.currency].some(v => String(v || '').toLowerCase().includes(q)));
     $('#playersTable').innerHTML = `<thead><tr><th>მოთამაშე</th><th>ტიპი</th><th class="r">ბალანსი</th><th class="r">ფსონი</th><th class="r">ბრუნვა</th><th class="r">მოთამაშის P/L</th><th>ბოლო ფსონი</th><th></th></tr></thead><tbody>${list.length ? list.map(p =>
-      `<tr><td><b>${esc(p.name)}</b> <code>${esc(p.pid)}</code>${p.currentBet ? ' <span class="pill info"><i></i>რბოლაშია</span>' : ''}</td>
+      `<tr><td><b>${esc(p.name)}</b> <code>${esc(p.pid)}</code>${p.currentBets?.length ? ` <span class="pill info"><i></i>რბოლაშია · ${p.currentBets.length}</span>` : ''}</td>
        <td>${p.platform ? `<span class="pill warn"><i></i>${esc(p.platform)}</span> <span class="muted">${esc(p.playerId || '')}</span>` : '<span class="pill info"><i></i>დემო</span>'}</td>
        <td class="r n">${money(p.balance)} <span class="muted">${esc(p.currency)}</span></td><td class="r n">${p.bets}</td><td class="r n">${money(p.turnover)}</td>
        <td class="r n ${p.pnl > 0 ? 'pos' : p.pnl < 0 ? 'neg' : ''}">${signed(p.pnl)}</td><td>${time(p.lastBetAt)}</td>

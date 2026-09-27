@@ -7,8 +7,8 @@
 //  POST   /players/:token/refill         → me
 //  GET    /bets/current                  → {round, bets}   (საჯარო სია)
 //  POST   /bets                          {token, car, amount, auto?} → me
-//  DELETE /bets/:token                   → me
-//  POST   /bets/:token/cashout           → me
+//  DELETE /bets/:token/:car              → me   (ბოლიდის ფსონის გაუქმება; /bets/:token — ერთადერთი ფსონისთვის)
+//  POST   /bets/:token/:car/cashout      → me   (/bets/:token/cashout — ერთადერთი ღია ფსონისთვის)
 //  GET    /events                        SSE: bets_changed, settled, me_changed
 //
 // დამოკიდებულია რაუნდის სერვისზე: GET /rounds/current, /rounds/accepting, POST /rounds/:n/check, SSE /events
@@ -16,6 +16,8 @@ import { Wallet } from './wallet.js';
 import { adminApi } from './admin.js';
 import { JsonStore } from '../lib/store.js';
 import { router, listen, EventHub, subscribe, apiClient } from '../lib/http.js';
+
+const carParam = v => (/^[0-2]$/.test(v) ? Number(v) : -1);
 
 export async function startBetsService({ port = 0, host = '127.0.0.1', dataDir, key, roundUrl, integrationsUrl = null }) {
   if (!key) throw new Error('INTERNAL_KEY აუცილებელია');
@@ -56,6 +58,8 @@ export async function startBetsService({ port = 0, host = '127.0.0.1', dataDir, 
     ['POST', '/bets', ({ body }) => wallet.placeBet(body.token, { car: body.car, amount: body.amount, auto: body.auto ?? null })],
     ['DELETE', '/bets/:token', ({ params }) => wallet.cancelBet(params.token)],
     ['POST', '/bets/:token/cashout', ({ params }) => wallet.cashOut(params.token)],
+    ['DELETE', '/bets/:token/:car', ({ params }) => wallet.cancelBet(params.token, carParam(params.car))],
+    ['POST', '/bets/:token/:car/cashout', ({ params }) => wallet.cashOut(params.token, carParam(params.car))],
     ['GET', '/events', ({ req, res }) => { hub.handle(req, res); }],
     ...adminApi(wallet, dataDir).routes
   ], { key });

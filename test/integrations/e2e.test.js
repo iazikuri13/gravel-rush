@@ -76,6 +76,20 @@ describe('კაზინოს ინტეგრაცია (Upgaming, სა
     assert.equal(log.filter(t => t === 'WIN').length, 2, 'ყოველ რაუნდს ერთი WIN (წაგებისას 0)');
   });
 
+  it('სამი ფსონი ერთ რბოლაში: კაზინოში სამი BET, ერთის გაუქმება — ერთი ROLLBACK', async () => {
+    const c = await sys.connect({ session: await launch('nino-gel') });
+    const start = (await player('nino-gel')).balance;
+    await c.freshBetPhase();
+    for (const [car, amount] of [[0, 100], [1, 200], [2, 300]]) assert.equal((await c.request({ t: 'bet', car, amount })).t, 'me');
+    assert.equal((await player('nino-gel')).balance, start - 6);
+    assert.equal((await c.request({ t: 'cancel', car: 2 })).t, 'me');
+    assert.equal((await player('nino-gel')).balance, start - 3);
+    const log = (await demo('api/state')).log.filter(x => x.player === 'nino-gel').reverse();
+    const tail = log.slice(-4);
+    assert.deepEqual(tail.map(x => x.type), ['BET', 'BET', 'BET', 'ROLLBACK']);
+    assert.deepEqual(tail.map(x => x.amount), [1, 2, 3, 3]);
+  });
+
   it('კაზინოში ფული არ არის → ფსონი უარყოფილია და არაფერი იჭრება', async () => {
     const c = await sys.connect({ session: await launch('ana-eur') });   // 40.00 EUR
     await c.freshBetPhase();

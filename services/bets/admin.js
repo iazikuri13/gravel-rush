@@ -64,7 +64,7 @@ export function adminApi(wallet, dataDir) {
         token, pid: pl.pid, name: pl.name, balance: pl.balance, createdAt: pl.createdAt || null,
         currency: pl.ext?.currency || 'DEMO', platform: pl.ext?.platform || null, playerId: pl.ext?.key?.split(':')[1] || null,
         bets: s.bets, turnover: s.turnover, wins: s.wins, pnl: s.wins + s.back - s.turnover, lastBetAt: s.lastAt,
-        currentBet: wallet.bets.get(token) ? { car: wallet.bets.get(token).car, amount: wallet.bets.get(token).amount, state: wallet.bets.get(token).state } : null
+        currentBets: [...wallet.bets.values()].filter(b => b.token === token).map(b => ({ car: b.car, amount: b.amount, state: b.state }))
       };
     }).sort((a, b) => (b.lastBetAt || b.createdAt || '').localeCompare(a.lastBetAt || a.createdAt || ''));
   }

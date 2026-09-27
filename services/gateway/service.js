@@ -155,8 +155,8 @@ export async function startGateway({ port = 3000, host, publicDir, key, roundUrl
       const enc = encodeURIComponent(token);
       const calls = {
         bet: () => bets.post('/bets', { token, car: msg.car, amount: msg.amount, auto: msg.auto ?? null }),
-        cancel: () => bets.del(`/bets/${enc}`),
-        cashout: () => bets.post(`/bets/${enc}/cashout`),
+        cancel: () => bets.del(carOf(msg) == null ? `/bets/${enc}` : `/bets/${enc}/${carOf(msg)}`),
+        cashout: () => bets.post(carOf(msg) == null ? `/bets/${enc}/cashout` : `/bets/${enc}/${carOf(msg)}/cashout`),
         refill: () => bets.post(`/players/${enc}/refill`),
         name: () => bets.patch(`/players/${enc}`, { name: msg.name })
       };
@@ -183,6 +183,9 @@ export async function startGateway({ port = 3000, host, publicDir, key, roundUrl
     }
   };
 }
+
+// ბოლიდი ბრძანებაში (არასავალდებულო): 0, 1, 2; სხვა მნიშვნელობა — შეცდომად მივა ფსონების სერვისამდე
+const carOf = m => (m.car == null ? null : [0, 1, 2].includes(m.car) ? m.car : 'x');
 
 function errMsg(e) {
   if (e instanceof HttpError && e.status < 500) return e.message;

@@ -110,8 +110,9 @@ INTERNAL_KEY=საიდუმლო ROUND_URL=http://127.0.0.1:4101 BETS_URL=h
 | POST | `/players/:token/refill` | შევსება (< 10.00) |
 | GET | `/bets/current` | საჯარო სია (token-ის გარეშე) |
 | POST | `/bets` | `{token, car, amount, auto?}` → `me` |
-| DELETE | `/bets/:token` | გაუქმება |
-| POST | `/bets/:token/cashout` | ქეშაუთი (round-ის დადასტურებით) |
+| DELETE | `/bets/:token/:car` | ამ ბოლიდზე ფსონის გაუქმება |
+| POST | `/bets/:token/:car/cashout` | ამ ბოლიდზე ქეშაუთი (round-ის დადასტურებით) |
+| DELETE / POST | `/bets/:token`, `/bets/:token/cashout` | ბოლიდის გარეშე — მუშაობს, თუ ფსონი მხოლოდ ერთია |
 | GET | `/events` | SSE: `bets_changed`, `settled`, `me_changed` (ახალი რაუნდისას ფსონის მქონე მოთამაშეს) |
 
 round-ისა და bets-ის ყველა მარშრუტი (`/health`-ის გარდა) მოითხოვს `x-internal-key` სათაურს. `npm start`-ისას ეს ორი სერვისი მხოლოდ `127.0.0.1`-ზე უსმენს.
@@ -120,9 +121,9 @@ round-ისა და bets-ის ყველა მარშრუტი (`/h
 
 კლიენტი → სერვერი:
 - `hello {token?, name?}`
-- `bet {car, amount, auto?}`: თანხა ცენტებში, `auto` ×100-ზე გამრავლებული (მაგ. 150 = ×1.50);
-- `cancel`
-- `cashout`
+- `bet {car, amount, auto?}`: თანხა ცენტებში, `auto` ×100-ზე გამრავლებული (მაგ. 150 = ×1.50). ერთ რბოლაში სამამდე ფსონი — თითო ბოლიდზე (0, 1, 2), თითოეულს თავისი თანხა და ავტო;
+- `cancel {car}`: ამ ბოლიდზე ფსონის გაუქმება;
+- `cashout {car}`: ამ ბოლიდზე ქეშაუთი (`car`-ის გარეშე მუშაობს მხოლოდ მაშინ, როცა ფსონი ერთია)
 - `refill`
 - `name {name}`
 - `ping {id}`
@@ -132,7 +133,7 @@ round-ისა და bets-ის ყველა მარშრუტი (`/h
 სერვერი → კლიენტი:
 - `welcome`
 - `snap`: საჯარო მდგომარეობა. გაუჩერებელი მანქანის შედეგი **არასდროს** იგზავნება;
-- `me`: შენი ბალანსი და ფსონი;
+- `me`: შენი ბალანსი და `bets`: `[b0, b1, b2]`, ბოლიდის მიხედვით (`null` — ამ ბოლიდზე ფსონი არ გაქვს);
 - `result`
 - `history`
 - `err`

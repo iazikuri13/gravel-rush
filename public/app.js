@@ -2,6 +2,7 @@
 import { G, CARS as N_CARS } from './shared/math.js';
 import { sha256, resultsFromSeed, verifyChain } from './shared/verify.js';
 import { createScene3D, paintCar } from './scene3d.js';
+import { carAction, mainAction, commandsFor } from './shared/slip.js';
 
 const $ = s => document.querySelector(s);
 const CARS = [
@@ -23,7 +24,7 @@ const store = {
 const SESSION = new URLSearchParams(location.search).get('session');
 const S = {
   phase: 'connecting', round: 0, roundHash: '', phaseStart: 0, raceStart: 0,
-  cars: [], bets: [], me: null, sel: 0, history: [], online: 0,
+  cars: [], bets: [], me: null, history: [], online: 0,
   rules: { betMs: 7000, endMs: 4000 }, commit: '', clientSeed: '',
   cam: 0, camV: 0, shake: 0
 };
@@ -130,7 +131,10 @@ const sy = d => baseY - (d - S.cam) + shakeY;
 const laneX = (i, d) => cx(d) + (i - 1) * laneGap;
 const slope = d => (cx(d + 2) - cx(d - 2)) / 4;
 // ჩემი ფსონი მხოლოდ მაშინ, თუ ეკრანზე მიმდინარე რბოლას ეკუთვნის
-const myBet = () => { const b = S.me?.bet; return b && b.round === S.round ? b : null; };
+// ჩემი ფსონები მხოლოდ მაშინ, თუ ეკრანზე მიმდინარე რბოლას ეკუთვნის; ინდექსი = ბოლიდი
+const myBets = () => [0, 1, 2].map(i => { const b = S.me?.bets?.[i]; return b && b.round === S.round ? b : null; });
+const myBet = car => myBets()[car];
+const mineCars = () => myBets().flatMap((b, i) => (b ? [i] : []));
 const raceT = () => Math.max(0, (serverNow() - S.raceStart) / 1000);
 const visD = (c, now) => c.d + LEADS[c.i] * Sc + (!c.ended && S.phase === 'race' ? Math.sin(now / 1000 * 1.7 + c.i * 2.1) * 6 * Sc : 0);
 const carX = (c, d) => laneX(c.i, d) + c.drift;
@@ -152,7 +156,7 @@ function endCarLocal(c, sc) {
     c.rock = { d: rd, x: laneX(c.i, rd), i: c.i, kind: Math.random() < .55 ? 'tires' : 'cones', seed: Math.random() * 100 };
     rocks.push(c.rock);
     burst(c, vd);
-    S.shake = Math.max(S.shake, myBet()?.car === c.i ? 12 : 5);
+    S.shake = Math.max(S.shake, myBet(c.i) ? 12 : 5);
   } else {
     c.driftTo = (c.i === 0 ? -1 : c.i === 2 ? 1 : (Math.random() < .5 ? -1 : 1)) * laneGap * .42;
   }
@@ -450,15 +454,14 @@ function draw(now) {
   }
   for (const r of rocks) drawObstacle(r);
   drawParts(false);
-  const myB = myBet();
-  const mine = myB ? myB.car : (S.phase === 'bet' ? S.sel : -1);
+  const mine = mineCars();
   const pos = S.cars.map(c => {
     const d = visD(c, now);
     return { c, d, x: carX(c, d), y: sy(d) + (S.phase === 'bet' ? Math.sin(now / 25 + c.i) * .5 : 0) };
   });
   for (const p of pos) {
     if (p.y < -80 || p.y > H + 80) continue;
-    if (p.c.i === mine && !p.c.ended) { ctx.fillStyle = CARS[p.c.i].color + '40'; ctx.beginPath(); ctx.ellipse(p.x, p.y, CW * 1.1, L * .75, Math.atan(slope(p.d)), 0, 6.2832); ctx.fill(); }
+    if (mine.includes(p.c.i) && !p.c.ended) { ctx.fillStyle = CARS[p.c.i].color + '40'; ctx.beginPath(); ctx.ellipse(p.x, p.y, CW * 1.1, L * .75, Math.atan(slope(p.d)), 0, 6.2832); ctx.fill(); }
     drawCar(p.x, p.y, Math.atan(slope(p.d)) + p.c.spin, CARS[p.c.i]);
   }
   drawParts(true);
@@ -467,8 +470,7 @@ function draw(now) {
     if (p.y < -40 || p.y > H + 40) continue;
     const ly = p.y - L * .5 - 16 * Sc, c = p.c;
     if (c.ended) pill(`${c.type === 'crash' ? 'დაეჯახა' : 'გაჩერდა'} ×${x100(c.crash100)}`, p.x, ly, c.type === 'crash' ? '#ff6a55' : '#d2ad73', '#1a0f08');
-    else if (myB && myB.car === c.i && myB.state === 'won') pill(`+${fmt(myB.win)}`, p.x, ly, '#4fd67a', '#062010');
-    else if (c.i === mine) pill(myB ? 'შენ' : 'არჩეული', p.x, ly, 'rgba(12,18,14,.85)', '#fff8ea');
+    else carPill(c.i, p.x, ly);
   }
   ctx.restore();
   const g = ctx.createLinearGradient(0, 0, 0, H);
@@ -505,48 +507,75 @@ function hud(now) {
     barEl.hidden = true;
   }
   updateAction(false);
-  if (feedDirty && now - lastFeed > 150) { lastFeed = now; feedDirty = false; renderFeed(); renderCards(); }
+  renderCards();
+  if (feedDirty && now - lastFeed > 150) { lastFeed = now; feedDirty = false; renderFeed(); }
 }
 let actKey = '';
 const readAmt = () => { const v = parseFloat($('#amt').value); return isFinite(v) ? Math.max(0, v) : 0; };
+const endedTxt = car => `${car.type === 'crash' ? 'დაეჯახა' : 'გაჩერდა'} ×${x100(car.crash100)}`;
+const ready = () => !!S.me && S.phase !== 'connecting' && S.phase !== 'halted';
+const stakeRaw = () => ({ amount: Math.round(readAmt() * 100), auto: $('#autoOn').checked ? Math.round(parseFloat($('#autoVal').value) * 100) || 0 : null });
+/** ხედი ფსონის პანელის ლოგიკისთვის (public/shared/slip.js) */
+const view = () => ({
+  ready: ready(), phase: S.phase, bets: myBets(), cars: S.cars, mult: currentMult(), stake: stakeRaw(),
+  maxWin: S.rules.maxWin ?? Infinity, counts: [0, 1, 2].map(i => S.bets.filter(x => x.car === i).length)
+});
+/** ფსონის პარამეტრები გაგზავნამდე; არასწორი ავტო — შეცდომა და null */
+function stake() {
+  const s = stakeRaw();
+  if (s.auto != null && !(s.auto >= 101)) { toast('ავტო-ქეშაუთი მინიმუმ ×1.01 უნდა იყოს', 'loss'); return null; }
+  return s;
+}
+function run(action) {
+  const needsStake = action.cmd === 'bet' || action.kind === 'bet-rest';
+  const s = needsStake ? stake() : null;
+  if (needsStake && !s) return;
+  for (const m of commandsFor(action, s)) send(m);
+}
+/** ერთი ბოლიდის ქმედება: ბარათზე, ტრასაზე ბოლიდზე ან 1/2/3 ღილაკზე დაჭერით */
+const carCmd = i => run(carAction(view(), i));
+const act = () => run(mainAction(view()));
+
+/** ბარათის ტექსტები */
+function cardText(a) {
+  const autoTxt = a.auto ? `×${x100(a.auto)}` : '';
+  switch (a.st) {
+    case 'bet': return ['+ ფსონი', `${fmt(a.amount)}${autoTxt ? ' · ' + autoTxt : ''}`];
+    case 'placed': return [fmt(a.amount), `${autoTxt ? autoTxt + ' · ' : ''}გაუქმება`];
+    case 'cash': return [fmt(a.payout), `ქეშაუთი · ×${a.mult.toFixed(2)}`];
+    case 'won': return [`+${fmt(a.win)}`, `აიღე ×${x100(a.m100)}-ზე`];
+    case 'lost': return [`−${fmt(a.amount)}`, a.ended ? endedTxt(a.ended) : 'დაიწვა'];
+    default: return a.ended ? [endedTxt(a.ended), `${a.count} ფსონი`] : a.racing ? ['მიქრის', `${a.count} ფსონი`] : ready() ? ['ფინიში', `${a.count ?? 0} ფსონი`] : ['—', ''];
+  }
+}
+
+/** მთავარი ღილაკი — სამივე ბოლიდზე ერთად */
 function updateAction(force) {
   let cls, main, sub, dis = false;
-  const b = myBet();
-  if (!S.me || S.phase === 'connecting' || S.phase === 'halted') {
-    cls = 'wait'; dis = true; main = S.phase === 'halted' ? 'თამაში შეჩერებულია' : 'კავშირი…'; sub = '';
-  } else if (S.phase === 'bet') {
-    const rem = Math.ceil(Math.max(0, S.rules.betMs - (serverNow() - S.phaseStart)) / 1000);
-    if (!b) { cls = 'bet'; main = `ფსონი ${fmt(Math.round(readAmt() * 100))}`; sub = `${CARS[S.sel].name} #${CARS[S.sel].num} · სტარტამდე ${rem} წმ`; }
-    else { cls = 'cancel'; main = 'ფსონის გაუქმება'; sub = `${fmt(b.amount)} → ${CARS[b.car].name}${b.auto ? ` · ავტო ×${x100(b.auto)}` : ''}`; }
-  } else if (S.phase === 'race') {
-    if (b && b.state === 'open') { const m = currentMult(); cls = 'cash'; main = `ქეშაუთი ${fmt(Math.floor(b.amount * Math.floor(m * 100) / 100))}`; sub = `×${m.toFixed(2)} · ${CARS[b.car].name}`; }
-    else if (b && b.state === 'won') { cls = 'won'; dis = true; main = `+${fmt(b.win)}`; sub = `აიღე ×${x100(b.m100)}-ზე`; }
-    else if (b) { cls = 'lost'; dis = true; main = 'ფსონი დაიწვა'; sub = `${CARS[b.car].name} ${S.cars[b.car].type === 'crash' ? 'დაეჯახა' : 'გაჩერდა'}`; }
-    else { cls = 'wait'; dis = true; main = 'რბოლა მიმდინარეობს'; sub = 'ფსონს შემდეგ რბოლაზე დადებ'; }
-  } else {
-    cls = 'wait'; dis = true; main = 'შემდეგი რბოლა მზადდება…';
-    sub = b ? (b.state === 'won' ? `ამ რბოლაზე მოგება +${fmt(b.win)}` : 'ამჯერად არ გაგიმართლა') : 'აირჩიე ბოლიდი ქვემოთ';
+  const a = mainAction(view()), rem = Math.ceil(Math.max(0, S.rules.betMs - (serverNow() - S.phaseStart)) / 1000);
+  switch (a.kind) {
+    case 'bet-rest':
+      cls = 'bet'; main = a.cars.length === 3 ? 'ფსონი სამივეზე' : `ფსონი დარჩენილ ${a.cars.length}-ზე`;
+      sub = `${a.cars.length} × ${fmt(a.total / a.cars.length)} = ${fmt(a.total)} · სტარტამდე ${rem} წმ`; break;
+    case 'cancel-all':
+      cls = 'cancel'; main = 'სამივე ფსონის გაუქმება'; sub = `სულ ${fmt(a.total)} · სტარტამდე ${rem} წმ`; break;
+    case 'cash-all':
+      cls = 'cash'; main = `${a.cars.length > 1 ? 'ქეშაუთი ყველა' : 'ქეშაუთი'} ${fmt(a.total)}`;
+      sub = `×${currentMult().toFixed(2)} · ${a.cars.map(i => CARS[i].name).join(', ')}`; break;
+    case 'result':
+      cls = a.won ? 'won' : 'lost'; dis = true; main = a.won ? `+${fmt(a.won)}` : 'ფსონები დაიწვა'; sub = `${a.cars.length} ფსონიდან ${a.wins} მოგებული`; break;
+    case 'next':
+      cls = 'wait'; dis = true; main = 'შემდეგი რბოლა მზადდება…';
+      sub = a.cars.length ? (a.won ? `ამ რბოლაზე: +${fmt(a.won)} (ფსონი ${fmt(a.staked)})` : 'ამჯერად არ გაგიმართლა') : 'დადე ფსონი ერთ, ორ ან სამივე ბოლიდზე'; break;
+    default:
+      cls = 'wait'; dis = true;
+      [main, sub] = !ready() ? [S.phase === 'halted' ? 'თამაში შეჩერებულია' : 'კავშირი…', ''] : ['რბოლა მიმდინარეობს', 'ფსონს შემდეგ რბოლაზე დადებ'];
   }
   const key = cls + main + sub;
   if (!force && key === actKey) return;
   actKey = key;
   actBtn.className = cls; actBtn.disabled = dis;
   actBtn.firstChild.textContent = main; actBtn.lastChild.textContent = sub;
-}
-function act() {
-  const b = myBet();
-  if (S.phase === 'bet') {
-    if (b) return send({ t: 'cancel' });
-    const amount = Math.round(readAmt() * 100);
-    let auto = null;
-    if ($('#autoOn').checked) {
-      auto = Math.round(parseFloat($('#autoVal').value) * 100);
-      if (!(auto >= 101)) return toast('ავტო-ქეშაუთი მინიმუმ ×1.01 უნდა იყოს', 'loss');
-    }
-    send({ t: 'bet', car: S.sel, amount, auto });
-  } else if (S.phase === 'race' && b && b.state === 'open') {
-    send({ t: 'cashout' });
-  }
 }
 let toastTimer;
 function toast(msg, kind) {
@@ -569,10 +598,9 @@ function drawMinis() {
   });
 }
 const carsEl = $('#cars');
-carsEl.innerHTML = CARS.map((c, i) => `<button class="car-card" type="button" id="car${i}" data-i="${i}" style="--c:${c.color}" aria-pressed="false">${mini(i)}<div class="cc-body"><div class="cc-name">${c.name}<span class="cc-num">#${c.num}</span></div><div class="cc-status" id="st${i}"></div></div><div class="cc-bets"><b id="cb${i}">0</b><small>ფსონი</small></div></button>`).join('');
-carsEl.addEventListener('click', e => { const b = e.target.closest('.car-card'); if (b) pick(+b.dataset.i); });
-function pick(i) { if (S.phase === 'bet' && !myBet()) { S.sel = i; renderCards(); updateAction(true); } }
-// ბოლიდის არჩევა ტრასაზე მასზე დაჭერით
+carsEl.innerHTML = CARS.map((c, i) => `<button class="car-card" type="button" id="car${i}" data-i="${i}" style="--c:${c.color}" aria-pressed="false">${mini(i)}<div class="cc-body"><div class="cc-name">${c.name}<span class="cc-num">#${c.num}</span></div><div class="cc-main" id="cm${i}"></div><div class="cc-sub" id="cs${i}"></div></div><span class="kbd cc-key" aria-hidden="true">${i + 1}</span></button>`).join('');
+carsEl.addEventListener('click', e => { const b = e.target.closest('.car-card'); if (b) carCmd(+b.dataset.i); });
+// ბოლიდზე დაჭერა ტრასაზე = მისი ბარათის ქმედება (ფსონი / გაუქმება / ქეშაუთი)
 function carAt(x, y) {
   const now = performance.now();
   if (G3) return G3.pick(x, y, now);
@@ -586,28 +614,30 @@ function carAt(x, y) {
 const stageEl = $('#stage');
 const stagePoint = e => { const r = stageEl.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
 stageEl.addEventListener('click', e => {
-  if (S.phase !== 'bet' || myBet()) return;
   const i = carAt(...stagePoint(e));
-  if (i >= 0) pick(i);
+  if (i >= 0) carCmd(i);
 });
 stageEl.addEventListener('pointermove', e => {
   if (e.pointerType !== 'mouse') return;
-  const can = S.phase === 'bet' && !myBet() && carAt(...stagePoint(e)) >= 0;
-  stageEl.style.cursor = can ? 'pointer' : '';
+  const i = carAt(...stagePoint(e));
+  stageEl.style.cursor = i >= 0 && carAction(view(), i).cmd ? 'pointer' : '';
 });
 function renderCards() {
-  const b = myBet();
+  const v = view();
   CARS.forEach((c, i) => {
-    const car = S.cars[i], btn = $('#car' + i), st = $('#st' + i);
-    btn.setAttribute('aria-pressed', String(b ? b.car === i : S.sel === i));
-    btn.disabled = S.phase !== 'bet' || !!b;
-    btn.classList.toggle('dead', !!car?.ended);
-    let txt = 'მზადაა სტარტზე', cls = 'cc-status';
-    if (car?.ended) { txt = `${car.type === 'crash' ? 'დაეჯახა' : 'გაჩერდა'} · ×${x100(car.crash100)}`; cls += ' ' + car.type; }
-    else if (S.phase === 'race') { txt = 'მიქრის'; cls += ' go'; }
-    setT(st, txt); setC(st, cls);
-    setT($('#cb' + i), String(S.bets.filter(x => x.car === i).length));
+    const a = carAction(v, i), btn = $('#car' + i), [main, sub] = cardText(a);
+    const tone = a.ended ? ' tone-' + a.ended.type : a.racing ? ' tone-go' : '';
+    setC(btn, `car-card st-${a.st}${tone}`);
+    btn.setAttribute('aria-pressed', String(!!myBet(i)));
+    btn.disabled = !a.cmd;
+    setT($('#cm' + i), main); setT($('#cs' + i), sub);
   });
+}
+/** ტრასაზე წარწერა ბოლიდის თავზე ჩემი ფსონისთვის */
+function carPill(i, x, y) {
+  const b = myBet(i); if (!b) return;
+  if (b.state === 'won') pill(`+${fmt(b.win)}`, x, y, '#4fd67a', '#062010');
+  else pill(`შენ · ${fmt(b.amount)}`, x, y, 'rgba(10,15,24,.86)', '#fff8ea');
 }
 function renderFeed() {
   const myPid = S.me?.pid;
@@ -726,19 +756,17 @@ document.addEventListener('keyup', e => { if (spaceHijack(e)) e.preventDefault()
 document.addEventListener('keydown', e => {
   if (e.target.matches('input, summary') || e.repeat) return;
   if (e.code === 'Space') { if (e.target === actBtn) return; e.preventDefault(); act(); }
-  const k = ['Digit1', 'Digit2', 'Digit3'].indexOf(e.code); if (k >= 0) pick(k);
+  const k = ['Digit1', 'Digit2', 'Digit3'].indexOf(e.code); if (k >= 0) carCmd(k);
 });
 
 /* ---------- 3D ---------- */
 function labels3(now) {
   ctx.clearRect(0, 0, W, H);
-  const myB = myBet(), mine = myB ? myB.car : (S.phase === 'bet' ? S.sel : -1);
   for (const c of S.cars) {
     const p = G3.project(c, now); if (!p || p.y < -20 || p.y > H + 20) continue;
     const ly = p.y - 12 * Sc;
     if (c.ended) pill(`${c.type === 'crash' ? 'დაეჯახა' : 'გაჩერდა'} ×${x100(c.crash100)}`, p.x, ly, c.type === 'crash' ? '#ff5d52' : '#e3bd72', '#1a0f08');
-    else if (myB && myB.car === c.i && myB.state === 'won') pill(`+${fmt(myB.win)}`, p.x, ly, '#4fd67a', '#062010');
-    else if (c.i === mine) pill(myB ? 'შენ' : 'არჩეული', p.x, ly, 'rgba(10,15,24,.86)', '#fff8ea');
+    else carPill(c.i, p.x, ly);
   }
 }
 function start3D() {
@@ -746,7 +774,7 @@ function start3D() {
     G3 = createScene3D({
       canvas: $('#gl'), S, parts, rocks, CARS, visD, cx, REDUCE,
       dims: () => ({ W, H, Sc, laneGap }),
-      mine: () => myBet() ? myBet().car : (S.phase === 'bet' ? S.sel : -1),
+      mine: mineCars,
       betRemaining: () => S.rules.betMs - (serverNow() - S.phaseStart)
     });
   } catch (e) { console.error(e); G3 = null; }

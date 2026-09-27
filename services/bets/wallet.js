@@ -16,6 +16,9 @@ function extError(e) {
   if (!e.status || e.status >= 500 || e.code === 'PLATFORM_UNAVAILABLE') return new HttpError(503, 'კაზინოსთან კავშირი ვერ დამყარდა — სცადე თავიდან');
   return new HttpError(409, e.message || 'კაზინომ ოპერაცია უარყო');
 }
+// ფსონის გასაღები: თითო მოთამაშეს თითო ბოლიდზე ერთი ფსონი (რბოლაში მაქსიმუმ სამი)
+const key = (token, car) => `${token}:${car}`;
+const CARS = [0, 1, 2];
 // ქეშაუთის წერტილი: მოთამაშის ავტო ან მოგების ზღვარი — რომელიც უფრო ადრე მოდის
 const target = b => Math.min(b.auto ?? Infinity, b.cap);
 const uncertain = e => !e.status || e.status >= 500 || e.code === 'PLATFORM_UNAVAILABLE';
@@ -33,8 +36,8 @@ export class Wallet extends EventEmitter {
     this.round = round;
     this.ext = ext;
     this.players = store.read('players.json', {});
-    this.bets = new Map();          // token → bet (მიმდინარე რაუნდი)
-    this.placing = new Set();       // token-ები, რომელთა ფსონი კაზინოსთან მუშავდება
+    this.bets = new Map();          // `${token}:${car}` → bet (მიმდინარე რაუნდი; მოთამაშეს სამამდე ფსონი)
+    this.placing = new Set();       // `${token}:${car}` — ფსონი კაზინოსთან მუშავდება
     this.ended = new Map();         // car → { crash100, type }
     this.timers = [];
     this.state = null;              // რაუნდის საჯარო მდგომარეობა
@@ -153,7 +156,7 @@ export class Wallet extends EventEmitter {
   // წინა რაუნდის ფსონები ქრება; მათ მფლობელებს ვუგზავნით განახლებულ me-ს (bet: null),
   // რომ კლიენტს ძველი ფსონი არ დარჩეს
   #newRound() {
-    const had = [...this.bets.keys()];
+    const had = new Set([...this.bets.values()].map(b => b.token));
     this.bets.clear(); this.ended.clear();
     for (const token of had) if (this.players[token]) this.emit('me_changed', { token, me: this.me(token) });
   }
@@ -280,25 +283,26 @@ export class Wallet extends EventEmitter {
 
   async placeBet(token, { car, amount, auto = null } = {}) {
     const pl = this.#player(token);
-    if (![0, 1, 2].includes(car)) throw new HttpError(400, 'აირჩიე მანქანა');
+    if (!CARS.includes(car)) throw new HttpError(400, 'აირჩიე ბოლიდი');
     if (!Number.isInteger(amount) || amount < RULES.minBet || amount > RULES.maxBet) throw new HttpError(400, 'ფსონი 1.00-დან 1 000.00-მდე უნდა იყოს');
     if (auto != null && (!Number.isInteger(auto) || auto < RULES.minAuto || auto > RULES.maxAuto)) throw new HttpError(400, `ავტო-ქეშაუთი ×1.01-დან ×${(RULES.maxAuto / 100).toLocaleString('en')}-მდე უნდა იყოს`);
     const acc = await this.round.accepting();
     if (!acc.accepting || !this.state || acc.round !== this.state.round) throw rule('ფსონების მიღება დასრულებულია — დაელოდე შემდეგ ეტაპს');
     // await-ის შემდეგ ხელახლა ვამოწმებთ (პარალელური მოთხოვნები)
-    if (this.bets.has(token) || this.placing.has(token)) throw rule('ამ ეტაპზე ფსონი უკვე დადებული გაქვს');
+    const k = key(token, car);
+    if (this.bets.has(k) || this.placing.has(k)) throw rule('ამ ბოლიდზე ფსონი უკვე დადებული გაქვს');
     let txId = null;
     if (pl.ext) {
       // ფული კაზინოშია: ჯერ კაზინო ჩამოჭრის (BET), მერე ვიღებთ ფსონს
       txId = `bet-${acc.round}-${randomBytes(8).toString('hex')}`;
       const tx = { id: txId, kind: 'bet', roundId: String(acc.round), amount };
-      this.placing.add(token);
+      this.placing.add(k);
       try { pl.balance = (await this.ext.tx(pl.ext.session, tx)).balance; }
       catch (e) {
         // პასუხი არ მივიღეთ — შეიძლება კაზინომ მაინც ჩამოჭრა; დაბრუნებას რიგში ვაყენებთ (თუ არ ჩამოუჭრია, კაზინო უარყოფს)
         if (uncertain(e)) this.#queue(token, { id: `rb-${txId}`, kind: 'rollback', ref: txId, roundId: String(acc.round), amount });
         throw extError(e);
-      } finally { this.placing.delete(token); }
+      } finally { this.placing.delete(k); }
       if (!this.state || this.state.round !== acc.round || this.state.phase !== 'bet') {
         this.#queue(token, { id: `rb-${txId}`, kind: 'rollback', ref: txId, roundId: String(acc.round), amount });
         throw rule('ფსონების მიღება დასრულდა — თანხა დაგიბრუნდება');
@@ -308,35 +312,47 @@ export class Wallet extends EventEmitter {
       pl.balance -= amount;
     }
     const bet = { token, pid: pl.pid, name: pl.name, round: acc.round, car, amount, auto: auto ?? null, cap: maxWinM100(amount, RULES.maxWin), state: 'open', m100: 0, win: 0, txId };
-    this.bets.set(token, bet);
+    this.bets.set(k, bet);
     this.#ledger({ type: 'bet', round: acc.round, token, car, amount, auto: bet.auto, balance: pl.balance });
     this.#savePlayers();
     this.#changed();
     return this.me(token);
   }
 
-  async cancelBet(token) {
+  /** ბოლიდის განსაზღვრა: მითითებული, ან — თუ მითითებული არ არის — ერთადერთი ფსონის ბოლიდი */
+  #carFor(token, car, pred = () => true) {
+    if (car != null) {
+      if (!CARS.includes(car)) throw new HttpError(400, 'აირჩიე ბოლიდი');
+      return car;
+    }
+    const mine = CARS.filter(c => { const b = this.bets.get(key(token, c)); return b && pred(b); });
+    if (mine.length > 1) throw new HttpError(400, 'მიუთითე ბოლიდი (car)');
+    return mine[0] ?? 0;
+  }
+
+  async cancelBet(token, car = null) {
     const pl = this.#player(token);
     const acc = await this.round.accepting();
     if (!acc.accepting) throw rule('სტარტის შემდეგ ფსონის გაუქმება შეუძლებელია');
-    const bet = this.bets.get(token);
+    const k = key(token, this.#carFor(token, car));
+    const bet = this.bets.get(k);
     if (!bet || bet.round !== acc.round) throw rule('გასაუქმებელი ფსონი არ გაქვს');
     if (pl.ext) {
       const tx = { id: `rb-${bet.txId}`, kind: 'rollback', ref: bet.txId, roundId: String(bet.round), amount: bet.amount };
       try { pl.balance = (await this.ext.tx(pl.ext.session, tx)).balance; }
       catch (e) { throw extError(e); }
-      if (this.bets.get(token) !== bet) return this.me(token);
+      if (this.bets.get(k) !== bet) return this.me(token);
     } else pl.balance += bet.amount;
-    this.bets.delete(token);
-    this.#ledger({ type: 'cancel', round: bet.round, token, amount: bet.amount, balance: pl.balance });
+    this.bets.delete(k);
+    this.#ledger({ type: 'cancel', round: bet.round, token, car: bet.car, amount: bet.amount, balance: pl.balance });
     this.#savePlayers();
     this.#changed();
     return this.me(token);
   }
 
-  async cashOut(token) {
+  async cashOut(token, car = null) {
     this.#player(token);
-    const bet = this.bets.get(token);
+    const bet = this.bets.get(key(token, this.#carFor(token, car, b => b.state === 'open')));
     if (!bet || bet.state !== 'open' || this.state?.phase !== 'race') throw rule('ქეშაუთი ახლა შეუძლებელია');
     bet.state = 'cashing';
     let r;
@@ -352,11 +368,14 @@ export class Wallet extends EventEmitter {
 
   me(token) {
     const pl = this.#player(token);
-    const b = this.bets.get(token);
     return {
       pid: pl.pid, name: pl.name, balance: pl.balance,
       currency: pl.ext ? pl.ext.currency : null, lobbyUrl: pl.ext?.lobbyUrl ?? null,
-      bet: b ? { round: b.round, car: b.car, amount: b.amount, auto: b.auto, state: pubState(b), m100: b.m100, win: b.win } : null
+      // ინდექსი = ბოლიდი; null — ამ ბოლიდზე ფსონი არ არის
+      bets: CARS.map(c => {
+        const b = this.bets.get(key(token, c));
+        return b ? { round: b.round, car: b.car, amount: b.amount, auto: b.auto, state: pubState(b), m100: b.m100, win: b.win } : null;
+      })
     };
   }
 

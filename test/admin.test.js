@@ -76,6 +76,14 @@ describe('ადმინი', () => {
     assert.ok(rounds.length >= 1 && rounds[0].round >= s.round);
   });
 
+  it('მოთამაშეებში ჩანს რბოლის ყველა მიმდინარე ფსონი, ბოლიდის მიხედვით', async () => {
+    const c = await sys.connect({ name: 'სამი-ფსონი' });
+    await c.freshBetPhase();
+    for (const [car, amount] of [[0, 100], [2, 300]]) assert.equal((await c.request({ t: 'bet', car, amount })).t, 'me');
+    const me = (await call('/players')).data.find(p => p.name === 'სამი-ფსონი');
+    assert.deepEqual(me.currentBets.map(b => [b.car, b.amount, b.state]).sort(), [[0, 100, 'open'], [2, 300, 'open']]);
+  });
+
   it('დემო ბალანსის შეცვლა: მოთამაშე მაშინვე ხედავს; არასწორი თანხა — შეცდომა', async () => {
     const c = await sys.connect({ name: 'ბალანსი-ტესტი' });
     const p = (await call('/players')).data.find(x => x.name === 'ბალანსი-ტესტი');

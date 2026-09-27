@@ -23,7 +23,7 @@ describe('კავშირი და ანგარიში', () => {
     const me = c.lastMe();
     assert.equal(me.balance, START_BALANCE);
     assert.match(me.name, /^მრბოლელი-/);
-    assert.equal(me.bet, null);
+    assert.deepEqual(me.bets, [null, null, null]);
   });
 
   it('snap შეიცავს მიმდინარე რაუნდის ჰეშს ჯაჭვიდან', async () => {
@@ -114,15 +114,15 @@ describe('ფსონები', () => {
     const r = await a.request({ t: 'bet', car: 1, amount: 2500, auto: 300 });
     assert.equal(r.t, 'me');
     assert.equal(r.balance, START_BALANCE - 2500);
-    assert.deepEqual(r.bet, { round: s.round, car: 1, amount: 2500, auto: 300, state: 'open', m100: 0, win: 0 });
+    assert.deepEqual(r.bets, [null, { round: s.round, car: 1, amount: 2500, auto: 300, state: 'open', m100: 0, win: 0 }, null]);
 
     const seen = await b.waitFor(m => m.t === 'snap' && m.round === s.round && m.bets.some(x => x.name === 'მოთამაშე-ა'));
     const pub = seen.bets.find(x => x.name === 'მოთამაშე-ა');
     assert.equal(pub.car, 1); assert.equal(pub.amount, 2500); assert.equal(pub.pid, a.lastMe().pid);
     assert.ok(!('auto' in pub), 'სხვისი ავტო-ქეშაუთი არ ჩანს');
 
-    const dbl = await a.request({ t: 'bet', car: 0, amount: 100 });
-    assert.equal(dbl.t, 'err');
+    const dbl = await a.request({ t: 'bet', car: 1, amount: 100 });
+    assert.equal(dbl.t, 'err', 'ერთ ბოლიდზე მეორე ფსონი არ იდება');
     const early = await a.request({ t: 'cashout' });
     assert.equal(early.t, 'err');
 
@@ -130,7 +130,7 @@ describe('ფსონები', () => {
     const c = await a.request({ t: 'cancel' });
     assert.equal(c.t, 'me');
     assert.equal(c.balance, START_BALANCE);
-    assert.equal(c.bet, null);
+    assert.deepEqual(c.bets, [null, null, null]);
     await b.waitFor(m => m.t === 'snap' && m.round === s.round && !m.bets.some(x => x.name === 'მოთამაშე-ა'), { from: bFrom });
   });
 
@@ -160,18 +160,38 @@ describe('ფსონები', () => {
     // რეგრესია: რბოლის შემდეგ კლიენტს ძველი me.bet რჩებოდა, ღილაკი „გაუქმებაზე“ იჭედებოდა
     const s = await a.freshBetPhase();
     assert.equal((await a.request({ t: 'bet', car: 2, amount: 300 })).t, 'me');
-    await a.waitFor(m => m.t === 'me' && m.bet && m.bet.round === s.round && m.bet.state !== 'open');
+    await a.waitFor(m => m.t === 'me' && m.bets[2] && m.bets[2].round === s.round && m.bets[2].state !== 'open');
     const from = a.mark();
     const next = await a.freshBetPhase();
-    const fresh = await a.waitFor(m => m.t === 'me' && m.bet === null, { from });
-    assert.equal(fresh.bet, null);
-    assert.equal(a.lastMe().bet, null, 'ახალი რბოლის დაწყებისას me.bet უნდა გასუფთავდეს');
+    const fresh = await a.waitFor(m => m.t === 'me' && m.bets.every(b => b === null), { from });
+    assert.deepEqual(fresh.bets, [null, null, null]);
+    assert.deepEqual(a.lastMe().bets, [null, null, null], 'ახალი რბოლის დაწყებისას me.bets უნდა გასუფთავდეს');
     const cancel = await a.request({ t: 'cancel' });
     assert.equal(cancel.t, 'err');
     const r = await a.request({ t: 'bet', car: 0, amount: 200 });
     assert.equal(r.t, 'me');
-    assert.equal(r.bet.round, next.round);
+    assert.equal(r.bets[0].round, next.round);
     assert.equal((await a.request({ t: 'cancel' })).t, 'me');
+  });
+
+  it('სამი ფსონი ერთ რბოლაში — თითო ბოლიდზე; გაუქმება ბოლიდის მიხედვით', async () => {
+    const s = await a.freshBetPhase();
+    const bal = a.lastMe().balance;
+    for (const [car, amount] of [[0, 100], [1, 200], [2, 300]]) assert.equal((await a.request({ t: 'bet', car, amount })).t, 'me');
+    const me = a.lastMe();
+    assert.equal(me.balance, bal - 600);
+    assert.deepEqual(me.bets.map(b => b.amount), [100, 200, 300]);
+    const seen = await b.waitFor(m => m.t === 'snap' && m.round === s.round && m.bets.filter(x => x.name === 'მოთამაშე-ა').length === 3);
+    assert.deepEqual(seen.bets.filter(x => x.name === 'მოთამაშე-ა').map(x => x.car).sort(), [0, 1, 2]);
+    // ბოლიდის მითითების გარეშე გაუქმება ორაზროვანია
+    assert.equal((await a.request({ t: 'cancel' })).t, 'err');
+    const c1 = await a.request({ t: 'cancel', car: 1 });
+    assert.equal(c1.balance, bal - 400);
+    assert.deepEqual(c1.bets.map(b => b?.amount ?? null), [100, null, 300]);
+    assert.equal((await a.request({ t: 'cancel', car: 1 })).t, 'err', 'გაუქმებულს მეორედ ვერ გააუქმებ');
+    assert.equal((await a.request({ t: 'cancel', car: 7 })).t, 'err');
+    assert.equal((await a.request({ t: 'cancel', car: 0 })).t, 'me');
+    assert.equal((await a.request({ t: 'cancel', car: 2 })).balance, bal);
   });
 
   it('token არასდროს ჩანს საჯარო შეტყობინებებში', async () => {
@@ -196,6 +216,14 @@ describe('ანგარიშსწორება', () => {
     }
     throw new Error('შესაფერისი რაუნდი ვერ მოიძებნა');
   }
+  async function roundWhereAll(pred) {
+    for (let k = 0; k < 60; k++) {
+      const s = await c.freshBetPhase();
+      const exp = sys.expected(s.round);
+      if (pred(exp)) return { s, exp };
+    }
+    throw new Error('შესაფერისი რაუნდი ვერ მოიძებნა');
+  }
 
   it('ავტო-ქეშაუთი იგებს, როცა მიზანი == გაჩერების წერტილი (≤ წესი)', async () => {
     const { s, exp, car } = await roundWhere(r => r.crash100 >= 101 && r.crash100 <= 1500);
@@ -206,7 +234,7 @@ describe('ანგარიშსწორება', () => {
     assert.equal(res.state, 'won');
     assert.equal(res.m100, auto);
     assert.equal(res.win, payout(1000, auto));
-    const me = await c.waitFor(m => m.t === 'me' && m.bet?.state === 'won');
+    const me = await c.waitFor(m => m.t === 'me' && m.bets[car]?.state === 'won');
     assert.equal(me.balance, bal - 1000 + payout(1000, auto));
     await c.roundEnd(s.round);
   });
@@ -219,7 +247,7 @@ describe('ანგარიშსწორება', () => {
     assert.equal(res.state, 'lost');
     assert.equal(res.crash100, exp[car].crash100);
     assert.equal(res.type, exp[car].type);
-    const me = await c.waitFor(m => m.t === 'me' && m.bet?.state === 'lost');
+    const me = await c.waitFor(m => m.t === 'me' && m.bets[car]?.state === 'lost');
     assert.equal(me.balance, bal - 700);
     await c.roundEnd(s.round);
   });
@@ -239,11 +267,36 @@ describe('ანგარიშსწორება', () => {
     assert.equal(res.state, 'won');
     assert.ok(res.m100 >= 140 && res.m100 < exp[car].crash100, `m100=${res.m100}`);
     assert.equal(res.win, payout(2000, res.m100));
-    const me = await c.waitFor(m => m.t === 'me' && m.bet?.state === 'won', { from });
+    const me = await c.waitFor(m => m.t === 'me' && m.bets[car]?.state === 'won', { from });
     assert.equal(me.balance, bal - 2000 + res.win);
     // მეორე ქეშაუთი იმავე ფსონზე — შეცდომა
     assert.equal((await c.request({ t: 'cashout' })).t, 'err');
     await c.roundEnd(s.round);
+  });
+
+  it('სამ ბოლიდზე ფსონი: თითოეული ცალკე სწორდება, ქეშაუთი ბოლიდის მიხედვით', async () => {
+    // რბოლა, სადაც ერთი ბოლიდი ×3-ს აღწევს, ერთი ×1.3-მდე ჩერდება
+    const { s, exp } = await roundWhereAll(e => e.some(r => r.crash100 >= 300) && e.some(r => r.crash100 < 130));
+    const hi = exp.findIndex(r => r.crash100 >= 300), lo = exp.findIndex(r => r.crash100 < 130), mid = 3 - hi - lo;
+    const bal = c.lastMe().balance, start = c.mark();
+    assert.equal((await c.request({ t: 'bet', car: hi, amount: 1000 })).t, 'me');
+    assert.equal((await c.request({ t: 'bet', car: lo, amount: 500, auto: 130 })).t, 'me');
+    assert.equal((await c.request({ t: 'bet', car: mid, amount: 200, auto: 101 })).t, 'me');
+    const race = await c.raceStart(s.round);
+    await sleep(Math.max(0, race.raceStart + timeFor(1.5) / sys.speed * 1000 - Date.now()));
+    const from = c.mark();
+    c.send({ t: 'cashout', car: hi });
+    const res = await c.waitFor(m => (m.t === 'result' && m.car === hi) || m.t === 'err', { from });
+    assert.equal(res.t, 'result', JSON.stringify(res));
+    assert.equal(res.state, 'won');
+    await c.roundEnd(s.round);
+    const results = c.log.slice(start).filter(m => m.t === 'result');
+    const byCar = car => results.filter(m => m.car === car).at(-1);
+    assert.equal(byCar(lo).state, 'lost');
+    assert.equal(byCar(mid).state, exp[mid].crash100 >= 101 ? 'won' : 'lost');
+    const me = await c.waitFor(m => m.t === 'me' && m.bets.filter(Boolean).length === 3 && m.bets.every(b => b.state !== 'open'), { from: start });
+    const wins = [hi, lo, mid].map(car => byCar(car)).reduce((a, r) => a + (r.state === 'won' ? r.win : 0), 0);
+    assert.equal(me.balance, bal - 1700 + wins);
   });
 
   it('დაგვიანებული ქეშაუთი უარყოფილია და ფსონი იწვება', async () => {
@@ -261,9 +314,9 @@ describe('ანგარიშსწორება', () => {
     const entries = sys.ledger().filter(e => e.token === c.token);
     const bets = entries.filter(e => e.type === 'bet');
     const settled = entries.filter(e => e.type === 'win' || e.type === 'lose');
-    assert.equal(bets.length, 4);
-    assert.equal(settled.length, 4);
-    for (const b of bets) assert.equal(settled.filter(x => x.round === b.round).length, 1);
+    assert.equal(bets.length, 7);
+    assert.equal(settled.length, 7);
+    for (const b of bets) assert.equal(settled.filter(x => x.round === b.round && x.car === b.car).length, 1);
     const sum = START_BALANCE - bets.reduce((s, e) => s + e.amount, 0) + settled.filter(e => e.type === 'win').reduce((s, e) => s + e.win, 0);
     assert.equal(c.lastMe().balance, sum);
   });

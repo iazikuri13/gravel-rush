@@ -701,7 +701,7 @@ export function createScene3D(api) {
       place(g, s, l, S.phase === 'bet' ? Math.sin(now / 35 + c.i * 2) * .004 : 0);
       g.rotation.y -= c.spin;
       const w = c.v / u / .36 * dt; g.userData.wheels.forEach(wh => wh.rotation.x -= w);
-      const rg = g.userData.ring; rg.visible = c.i === mine && !c.ended;
+      const rg = g.userData.ring; rg.visible = mine.includes(c.i) && !c.ended;
       if (rg.visible) rg.material.opacity = .35 + .2 * Math.sin(now / 250);
     });
     for (const [r, m] of obst) if (!rocks.includes(r)) { scene.remove(m); obst.delete(r); }

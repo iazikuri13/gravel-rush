@@ -2,7 +2,7 @@
 import { G, CARS as N_CARS } from './shared/math.js';
 import { sha256, resultsFromSeed, verifyChain } from './shared/verify.js';
 import { createScene3D, paintCar } from './scene3d.js';
-import { carAction, mainAction, commandsFor } from './shared/slip.js';
+import { slipState, commandFor, queuedBets, stepAmount } from './shared/slip.js';
 
 const $ = s => document.querySelector(s);
 const CARS = [
@@ -57,7 +57,7 @@ function connect() {
   ws.onclose = () => {
     clearInterval(pingTimer);
     setConn('closed', 'კავშირი გაწყდა — ხელახლა ვცდილობ…');
-    S.phase = 'connecting'; updateAction(true);
+    S.phase = 'connecting'; renderSlips();
     setTimeout(connect, retry); retry = Math.min(retry * 1.7, 6000);
   };
 }
@@ -82,7 +82,7 @@ function onMessage(m) {
       S.me = m;
       if (document.activeElement !== $('#nick')) $('#nick').value = m.name;
       if (!SESSION) store.set('gr_name', m.name);
-      updateBal(); feedDirty = true; renderCards(); updateAction(true);
+      updateBal(); feedDirty = true; renderSlips();
       break;
     case 'result':
       if (m.state === 'won') toast(m.maxWin ? `მაქსიმალური მოგება! ×${x100(m.m100)} · +${fmt(m.win)}` : `ქეშაუთი ×${x100(m.m100)} · +${fmt(m.win)}`, 'win');
@@ -101,7 +101,7 @@ function applySnap(s) {
   $('#fRoundHash').textContent = s.roundHash || '—';
   $('#online').textContent = String(s.online);
   s.cars.forEach((sc, i) => { const c = S.cars[i]; if (sc.ended && !c.ended) endCarLocal(c, sc); });
-  feedDirty = true; renderCards(); updateAction(true);
+  feedDirty = true; sendQueued(); renderSlips();
 }
 
 function resetRound(round) {
@@ -482,7 +482,7 @@ function draw(now) {
 }
 
 /* ---------- UI ---------- */
-const multEl = $('#mult'), phaseEl = $('#phase'), barEl = $('#bar'), barFill = $('#barFill'), actBtn = $('#action');
+const multEl = $('#mult'), phaseEl = $('#phase'), barEl = $('#bar'), barFill = $('#barFill');
 const setT = (el, t) => { if (el.textContent !== t) el.textContent = t; };
 const setC = (el, c) => { if (el.className !== c) el.className = c; };
 function hud(now) {
@@ -506,76 +506,136 @@ function hud(now) {
     setT(phaseEl, S.phase === 'halted' ? 'თამაში შეჩერებულია' : 'სერვერთან დაკავშირება…');
     barEl.hidden = true;
   }
-  updateAction(false);
-  renderCards();
+  renderSlips();
   if (feedDirty && now - lastFeed > 150) { lastFeed = now; feedDirty = false; renderFeed(); }
 }
-let actKey = '';
-const readAmt = () => { const v = parseFloat($('#amt').value); return isFinite(v) ? Math.max(0, v) : 0; };
 const endedTxt = car => `${car.type === 'crash' ? 'დაეჯახა' : 'გაჩერდა'} ×${x100(car.crash100)}`;
 const ready = () => !!S.me && S.phase !== 'connecting' && S.phase !== 'halted';
-const stakeRaw = () => ({ amount: Math.round(readAmt() * 100), auto: $('#autoOn').checked ? Math.round(parseFloat($('#autoVal').value) * 100) || 0 : null });
-/** ხედი ფსონის პანელის ლოგიკისთვის (public/shared/slip.js) */
+
+/* ---------- ფსონის პანელები: თითო ბოლიდს თავისი თანხა, ავტო და ღილაკი ---------- */
+// slips[i] = { amt (ვალუტის ერთეული), autoOn, auto (კოეფიციენტი) } — ინახება ბრაუზერში
+const slips = (() => {
+  const def = () => ({ amt: 50, autoOn: false, auto: 2 });
+  try {
+    const v = JSON.parse(store.get('gr_slips'));
+    if (Array.isArray(v) && v.length === 3) return v.map(x => ({ ...def(), ...x }));
+  } catch {}
+  return [def(), def(), def()];
+})();
+const saveSlips = () => store.set('gr_slips', JSON.stringify(slips));
+const queued = [false, false, false];   // ფსონი შემდეგ რბოლაზე
+const stakeOf = i => ({ amount: Math.round(slips[i].amt * 100), auto: slips[i].autoOn ? Math.round(slips[i].auto * 100) || 0 : null });
+/** ხედი ფსონის პანელების ლოგიკისთვის (public/shared/slip.js) */
 const view = () => ({
-  ready: ready(), phase: S.phase, bets: myBets(), cars: S.cars, mult: currentMult(), stake: stakeRaw(),
-  maxWin: S.rules.maxWin ?? Infinity, counts: [0, 1, 2].map(i => S.bets.filter(x => x.car === i).length)
+  ready: ready(), phase: S.phase, bets: myBets(), cars: S.cars, mult: currentMult(),
+  stakes: [0, 1, 2].map(stakeOf), queued, maxWin: S.rules.maxWin ?? Infinity,
+  counts: [0, 1, 2].map(i => S.bets.filter(x => x.car === i).length)
 });
-/** ფსონის პარამეტრები გაგზავნამდე; არასწორი ავტო — შეცდომა და null */
-function stake() {
-  const s = stakeRaw();
+function validStake(i) {
+  const s = stakeOf(i);
   if (s.auto != null && !(s.auto >= 101)) { toast('ავტო-ქეშაუთი მინიმუმ ×1.01 უნდა იყოს', 'loss'); return null; }
   return s;
 }
-function run(action) {
-  const needsStake = action.cmd === 'bet' || action.kind === 'bet-rest';
-  const s = needsStake ? stake() : null;
-  if (needsStake && !s) return;
-  for (const m of commandsFor(action, s)) send(m);
-}
-/** ერთი ბოლიდის ქმედება: ბარათზე, ტრასაზე ბოლიდზე ან 1/2/3 ღილაკზე დაჭერით */
-const carCmd = i => run(carAction(view(), i));
-const act = () => run(mainAction(view()));
-
-/** ბარათის ტექსტები */
-function cardText(a) {
-  const autoTxt = a.auto ? `×${x100(a.auto)}` : '';
-  switch (a.st) {
-    case 'bet': return ['+ ფსონი', `${fmt(a.amount)}${autoTxt ? ' · ' + autoTxt : ''}`];
-    case 'placed': return [fmt(a.amount), `${autoTxt ? autoTxt + ' · ' : ''}გაუქმება`];
-    case 'cash': return [fmt(a.payout), `ქეშაუთი · ×${a.mult.toFixed(2)}`];
-    case 'won': return [`+${fmt(a.win)}`, `აიღე ×${x100(a.m100)}-ზე`];
-    case 'lost': return [`−${fmt(a.amount)}`, a.ended ? endedTxt(a.ended) : 'დაიწვა'];
-    default: return a.ended ? [endedTxt(a.ended), `${a.count} ფსონი`] : a.racing ? ['მიქრის', `${a.count} ფსონი`] : ready() ? ['ფინიში', `${a.count ?? 0} ფსონი`] : ['—', ''];
+/** პანელის ღილაკი (ასევე ტრასაზე ბოლიდზე დაჭერა და 1/2/3) */
+function carCmd(i) {
+  const st = slipState(view(), i);
+  if (st.cmd === 'queue' || st.cmd === 'unqueue') {
+    if (st.cmd === 'queue' && !validStake(i)) return;
+    queued[i] = st.cmd === 'queue'; renderSlips(); return;
   }
+  const stake = st.cmd === 'bet' ? validStake(i) : null;
+  if (st.cmd === 'bet' && !stake) return;
+  const m = commandFor(st, stake);
+  if (m) send(m);
+}
+/** ახალი რბოლის ფსონების მიღებისას — შემდეგი რბოლისთვის მომზადებული ფსონები */
+function sendQueued() {
+  for (const m of queuedBets(view())) { queued[m.car] = false; send(m); }
 }
 
-/** მთავარი ღილაკი — სამივე ბოლიდზე ერთად */
-function updateAction(force) {
-  let cls, main, sub, dis = false;
-  const a = mainAction(view()), rem = Math.ceil(Math.max(0, S.rules.betMs - (serverNow() - S.phaseStart)) / 1000);
-  switch (a.kind) {
-    case 'bet-rest':
-      cls = 'bet'; main = a.cars.length === 3 ? 'ფსონი სამივეზე' : `ფსონი დარჩენილ ${a.cars.length}-ზე`;
-      sub = `${a.cars.length} × ${fmt(a.total / a.cars.length)} = ${fmt(a.total)} · სტარტამდე ${rem} წმ`; break;
-    case 'cancel-all':
-      cls = 'cancel'; main = 'სამივე ფსონის გაუქმება'; sub = `სულ ${fmt(a.total)} · სტარტამდე ${rem} წმ`; break;
-    case 'cash-all':
-      cls = 'cash'; main = `${a.cars.length > 1 ? 'ქეშაუთი ყველა' : 'ქეშაუთი'} ${fmt(a.total)}`;
-      sub = `×${currentMult().toFixed(2)} · ${a.cars.map(i => CARS[i].name).join(', ')}`; break;
-    case 'result':
-      cls = a.won ? 'won' : 'lost'; dis = true; main = a.won ? `+${fmt(a.won)}` : 'ფსონები დაიწვა'; sub = `${a.cars.length} ფსონიდან ${a.wins} მოგებული`; break;
-    case 'next':
-      cls = 'wait'; dis = true; main = 'შემდეგი რბოლა მზადდება…';
-      sub = a.cars.length ? (a.won ? `ამ რბოლაზე: +${fmt(a.won)} (ფსონი ${fmt(a.staked)})` : 'ამჯერად არ გაგიმართლა') : 'დადე ფსონი ერთ, ორ ან სამივე ბოლიდზე'; break;
-    default:
-      cls = 'wait'; dis = true;
-      [main, sub] = !ready() ? [S.phase === 'halted' ? 'თამაში შეჩერებულია' : 'კავშირი…', ''] : ['რბოლა მიმდინარეობს', 'ფსონს შემდეგ რბოლაზე დადებ'];
+const slipsEl = $('#slips');
+slipsEl.innerHTML = CARS.map((c, i) => `
+  <div class="slip" id="slip${i}" style="--c:${c.color}">
+    <div class="sl-head">
+      <canvas class="mini" id="mini${i}" aria-hidden="true"></canvas>
+      <span class="sl-name">${c.name}<span class="cc-num">#${c.num}</span></span>
+      <span class="sl-res" id="sr${i}"></span>
+      <span class="sl-autobox"><label class="switch sl-auto"><input type="checkbox" data-f="autoOn" data-i="${i}"><span></span>ავტო</label>
+      <span class="auto-val"><input type="number" inputmode="decimal" min="1.01" max="100000" step="0.1" data-f="auto" data-i="${i}" aria-label="${c.name}: ავტო-ქეშაუთის კოეფიციენტი">×</span></span>
+    </div>
+    <div class="sl-row">
+      <div class="sl-amt">
+        <button class="step" type="button" data-d="-1" data-i="${i}" aria-label="${c.name}: შემცირება">−</button>
+        <input class="amt" type="number" inputmode="decimal" min="1" max="1000" step="1" data-f="amt" data-i="${i}" aria-label="${c.name}: ფსონის ოდენობა">
+        <button class="step" type="button" data-d="1" data-i="${i}" aria-label="${c.name}: გაზრდა">+</button>
+      </div>
+      <button class="sl-btn" type="button" id="sb${i}" data-i="${i}"><span class="b-main"></span><span class="b-sub"></span></button>
+    </div>
+  </div>`).join('');
+const field = (i, f) => slipsEl.querySelector(`[data-f="${f}"][data-i="${i}"]`);
+const wasEditable = [null, null, null];
+function fillInputs(i) {
+  field(i, 'amt').value = String(slips[i].amt);
+  field(i, 'autoOn').checked = slips[i].autoOn;
+  field(i, 'auto').value = slips[i].auto.toFixed(2);
+}
+[0, 1, 2].forEach(fillInputs);
+slipsEl.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const i = +b.dataset.i;
+  if (b.classList.contains('sl-btn')) return carCmd(i);
+  if (b.dataset.d) {
+    const max = Math.min(S.rules.maxBet ?? 100000, S.me ? Math.max(100, S.me.balance) : 100000);
+    slips[i].amt = stepAmount(Math.round(slips[i].amt * 100), +b.dataset.d, S.rules.minBet ?? 100, max) / 100;
+    saveSlips(); fillInputs(i); renderSlips();
   }
-  const key = cls + main + sub;
-  if (!force && key === actKey) return;
-  actKey = key;
-  actBtn.className = cls; actBtn.disabled = dis;
-  actBtn.firstChild.textContent = main; actBtn.lastChild.textContent = sub;
+});
+slipsEl.addEventListener('input', e => {
+  const f = e.target.dataset.f, i = +e.target.dataset.i; if (!f) return;
+  if (f === 'autoOn') slips[i].autoOn = e.target.checked;
+  else { const n = parseFloat(e.target.value); if (isFinite(n)) slips[i][f] = n; }
+  saveSlips(); renderSlips();
+});
+slipsEl.addEventListener('change', e => {
+  const f = e.target.dataset.f, i = +e.target.dataset.i;
+  if (f === 'amt') slips[i].amt = Math.max(1, Math.min(1000, Math.round((parseFloat(e.target.value) || 1) * 100) / 100));
+  if (f === 'auto') slips[i].auto = Math.max(1.01, Math.min(100000, Math.round((parseFloat(e.target.value) || 2) * 100) / 100));
+  saveSlips(); fillInputs(i);
+});
+
+/** ღილაკის და შედეგის ტექსტები */
+function slipText(s, rem) {
+  switch (s.st) {
+    case 'bet': return [['ფსონი', `სტარტამდე ${rem} წმ`], ''];
+    case 'placed': return [['გაუქმება', `${fmt(s.amount)} · ელოდება სტარტს`], ''];
+    case 'cash': return [[fmt(s.payout), `ქეშაუთი · ×${s.mult.toFixed(2)}`], ''];
+    case 'won': return [['ფსონი', 'შემდეგ რბოლაზე'], `+${fmt(s.win)}`];
+    case 'lost': return [['ფსონი', 'შემდეგ რბოლაზე'], `−${fmt(s.amount)}`];
+    case 'queued': return [['გაუქმება', 'ელოდება შემდეგ რბოლას'], ''];
+    case 'closed': return [['ფსონი', 'შემდეგ რბოლაზე'], s.ended ? endedTxt(s.ended) : S.phase === 'race' ? 'მიდის' : ''];
+    default: return [[S.phase === 'halted' ? 'შეჩერებულია' : 'კავშირი…', ''], ''];
+  }
+}
+const BTN = { bet: 'go', placed: 'cancel', queued: 'cancel', cash: 'cash', won: 'go', lost: 'go', closed: 'go', off: 'wait' };
+function renderSlips() {
+  const v = view(), rem = Math.ceil(Math.max(0, S.rules.betMs - (serverNow() - S.phaseStart)) / 1000);
+  CARS.forEach((c, i) => {
+    const s = slipState(v, i), [[main, sub], res] = slipText(s, rem), btn = $('#sb' + i);
+    setC($('#slip' + i), `slip st-${s.st}${s.ended ? ' car-' + s.ended.type : ''}`);
+    setC(btn, `sl-btn ${BTN[s.st]}`);
+    btn.disabled = !s.cmd;
+    setT(btn.firstChild, main); setT(btn.lastChild, sub);
+    const r = $('#sr' + i); setT(r, res);
+    setC(r, `sl-res${s.st === 'won' ? ' won' : s.st === 'lost' ? ' lost' : ''}`);
+    if (wasEditable[i] !== s.editable) {
+      wasEditable[i] = s.editable;
+      for (const f of ['amt', 'autoOn', 'auto']) field(i, f).disabled = !s.editable;
+      slipsEl.querySelectorAll(`.step[data-i="${i}"]`).forEach(b => { b.disabled = !s.editable; });
+      // დადებული ფსონის თანხა ჩანს ველში; რედაქტირება — საკუთარი მნიშვნელობით
+      if (s.editable || !myBet(i)) fillInputs(i);
+      else field(i, 'amt').value = String(myBet(i).amount / 100);
+    }
+  });
 }
 let toastTimer;
 function toast(msg, kind) {
@@ -589,7 +649,6 @@ function updateBal() {
   $('#refill').hidden = !S.me || !!cur || S.me.balance >= 1000;
 }
 
-const mini = i => `<canvas class="mini" id="mini${i}" aria-hidden="true"></canvas>`;
 function drawMinis() {
   const d = Math.min(3, (devicePixelRatio || 1) * 1.5);
   CARS.forEach((c, i) => {
@@ -597,9 +656,6 @@ function drawMinis() {
     const x = el.getContext('2d'); x.scale(d, d); x.translate(12, 23); paintCar(x, c, 21, 44);
   });
 }
-const carsEl = $('#cars');
-carsEl.innerHTML = CARS.map((c, i) => `<button class="car-card" type="button" id="car${i}" data-i="${i}" style="--c:${c.color}" aria-pressed="false">${mini(i)}<div class="cc-body"><div class="cc-name">${c.name}<span class="cc-num">#${c.num}</span></div><div class="cc-main" id="cm${i}"></div><div class="cc-sub" id="cs${i}"></div></div><span class="kbd cc-key" aria-hidden="true">${i + 1}</span></button>`).join('');
-carsEl.addEventListener('click', e => { const b = e.target.closest('.car-card'); if (b) carCmd(+b.dataset.i); });
 // ბოლიდზე დაჭერა ტრასაზე = მისი ბარათის ქმედება (ფსონი / გაუქმება / ქეშაუთი)
 function carAt(x, y) {
   const now = performance.now();
@@ -620,19 +676,8 @@ stageEl.addEventListener('click', e => {
 stageEl.addEventListener('pointermove', e => {
   if (e.pointerType !== 'mouse') return;
   const i = carAt(...stagePoint(e));
-  stageEl.style.cursor = i >= 0 && carAction(view(), i).cmd ? 'pointer' : '';
+  stageEl.style.cursor = i >= 0 && slipState(view(), i).cmd ? 'pointer' : '';
 });
-function renderCards() {
-  const v = view();
-  CARS.forEach((c, i) => {
-    const a = carAction(v, i), btn = $('#car' + i), [main, sub] = cardText(a);
-    const tone = a.ended ? ' tone-' + a.ended.type : a.racing ? ' tone-go' : '';
-    setC(btn, `car-card st-${a.st}${tone}`);
-    btn.setAttribute('aria-pressed', String(!!myBet(i)));
-    btn.disabled = !a.cmd;
-    setT($('#cm' + i), main); setT($('#cs' + i), sub);
-  });
-}
 /** ტრასაზე წარწერა ბოლიდის თავზე ჩემი ფსონისთვის */
 function carPill(i, x, y) {
   const b = myBet(i); if (!b) return;
@@ -736,26 +781,11 @@ side.addEventListener('touchstart', e => { sheetY = side.querySelector('.side-bo
 side.addEventListener('touchmove', e => { if (sheetY !== null && e.touches[0].clientY - sheetY > 70) { sheetY = null; closeSheet(); } }, { passive: true });
 
 /* ---------- შეყვანა ---------- */
-actBtn.addEventListener('click', act);
-$('#amt').addEventListener('input', () => updateAction(true));
-document.querySelectorAll('.step').forEach(b => b.addEventListener('click', () => {
-  $('#amt').value = String(Math.max(1, Math.min(1000, readAmt() + +b.dataset.step))); updateAction(true);
-}));
-$('#chips').addEventListener('click', e => {
-  const b = e.target.closest('button'); if (!b) return;
-  const bal = S.me ? S.me.balance / 100 : 1000;
-  const n = Math.max(1, Math.min(+b.dataset.v, 1000, Math.max(1, Math.floor(bal))));
-  $('#amt').value = String(Math.round(n * 100) / 100); updateAction(true);
-});
 $('#refill').addEventListener('click', () => send({ t: 'refill' }));
 $('#nick').addEventListener('change', e => send({ t: 'name', name: e.target.value }));
 $('#nick').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
-// Space ყველგან ფსონს/ქეშაუთს აკეთებს (ფოკუსირებულ ღილაკზეც), გარდა ტექსტური ველებისა
-const spaceHijack = e => e.code === 'Space' && !e.target.matches('input, summary') && e.target !== actBtn;
-document.addEventListener('keyup', e => { if (spaceHijack(e)) e.preventDefault(); });
 document.addEventListener('keydown', e => {
   if (e.target.matches('input, summary') || e.repeat) return;
-  if (e.code === 'Space') { if (e.target === actBtn) return; e.preventDefault(); act(); }
   const k = ['Digit1', 'Digit2', 'Digit3'].indexOf(e.code); if (k >= 0) carCmd(k);
 });
 
@@ -783,7 +813,7 @@ function start3D() {
 
 /* ---------- ციკლი ---------- */
 new ResizeObserver(resize).observe($('#stage'));
-resize(); resetRound(0); start3D(); drawMinis(); renderCards(); renderFeed(); connect();
+resize(); resetRound(0); start3D(); drawMinis(); renderSlips(); renderFeed(); connect();
 document.fonts?.ready.then(drawMinis);
 let last = performance.now();
 function frame(now) {

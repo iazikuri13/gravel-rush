@@ -132,6 +132,23 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .switch input:focus-visible+span{outline:2px solid var(--gold);outline-offset:2px}
 @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(79,214,122,.55)}100%{box-shadow:0 0 0 12px rgba(79,214,122,0)}}
 
+/* კომპიუტერზე: სამივე პანელს ერთნაირი წყობა — სახელი → თანხა → სწრაფი თანხები → ავტო → ღილაკი */
+@media (min-width:901px){
+  .slip{display:grid;grid-template-columns:13px minmax(0,1fr) auto;align-items:center;gap:8px;
+    grid-template-areas:"mini name res" "amt amt amt" "chips chips chips" "auto auto auto" "btn btn btn"}
+  .sl-head,.sl-row{display:contents}
+  .mini{grid-area:mini} .sl-name{grid-area:name;overflow:hidden;text-overflow:ellipsis}
+  .sl-res{grid-area:res;max-width:120px}
+  .sl-amt{grid-area:amt} .sl-chips{grid-area:chips} .sl-btn{grid-area:btn}
+  .sl-autobox{grid-area:auto;margin-left:0;justify-content:space-between;min-height:28px}
+}
+/* ვიწრო კომპიუტერი / პლანშეტი: პანელები ტრასის ქვეშ მთელ სიგანეზე, გვერდითი პანელი ზემოთ რჩება */
+@media (min-width:901px) and (max-width:1180px){
+  .app{grid-template-areas:"top top" "hist hist" "stage side" "deck deck"}
+  .side{position:static;max-height:clamp(360px,58vh,600px)}
+  .side-body>*{flex-shrink:0}
+}
+
 /* ---------- side ---------- */
 .nick{display:flex;flex-direction:column;gap:4px;padding:10px 14px}
 .nick small{font-size:11px;color:var(--muted);letter-spacing:.06em}
